@@ -49,6 +49,12 @@
     -webkit-backdrop-filter: blur(12px);
     color: #ffffff;
   }
+  section.view:not(#view-login) {
+  background: linear-gradient(0deg, #0a192f 0%, #1e3a8a 100%) !important;
+  min-height: 100vh;
+  width: 100%;
+  color: #ffffff !important;
+  }
   .brand{font-size:2rem; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px}
   .brand-logo{width:50px; height:50px; object-fit:contain;}
   .tag{color:#ffffff !important; font-size:.9rem; margin:6px 0 24px; line-height:1.4}
@@ -80,10 +86,11 @@
   line-height: 1.4;
   }
 
-  /* ---- App shell ---- */
   .topbar{
-    display:flex; align-items:center; gap:14px; padding:14px 20px;
-    border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:5;
+  display:flex; align-items:center; gap:14px; padding:14px 20px;
+  border-bottom:1px solid rgba(255, 255, 255, 0.1) !important; 
+  background: #04224d !important; /* Aquí le pones el azul oscuro de tu degradado */
+  position:sticky; top:0; z-index:5;
   }
   .topbar .brand{font-size:1.05rem; white-space:nowrap}
   #search{
@@ -100,19 +107,28 @@
 
   .cat-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:12px}
   .cat-card{
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
-    padding:18px 14px; text-align:left;
+  background: rgba(255, 255, 255, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: var(--radius-lg);
+  padding: 18px 14px;
+  text-align: left;
+  backdrop-filter: blur(10px);
+  color: #ffffff;
   }
   .cat-card .ic{font-size:1.6rem; display:block; margin-bottom:10px}
   .cat-card .nm{font-weight:600; font-size:.92rem}
 
   .item-list{display:flex; flex-direction:column; gap:8px}
   .item-row{
-    display:flex; align-items:center; justify-content:space-between; text-align:left;
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm);
-    padding:13px 16px; font-size:.92rem;
+  display:flex; align-items:center; justify-content:space-between; text-align:left;
+  background: rgba(255, 255, 255, 0.15) !important; /* Modo cristal */
+  border: 1px solid rgba(255, 255, 255, 0.25) !important; 
+  border-radius: var(--radius-sm);
+  padding: 13px 16px; font-size: .92rem;
+  color: #ffffff !important; /* Letra blanca */
+  backdrop-filter: blur(8px);
   }
-  .item-row span.arrow{color:var(--muted)}
+  .item-row span.arrow{color: #ffffff !important;} /* Flechita en blanco */
 
   .detail-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px}
   .detail-card .field input, .detail-card .field textarea{
