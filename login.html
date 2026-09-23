@@ -24,10 +24,11 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{
-    margin:0; background:var(--bg); color:var(--text);
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #002b7f 0%, #ce1126 50%, #fcd116 100%);
+    background-attachment: fixed;
   }
   button{font-family:inherit; cursor:pointer}
   input{font-family:inherit}
@@ -37,22 +38,47 @@
   /* ---- Login ---- */
   #view-login.active{display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px}
   .login-card{
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
-    box-shadow:var(--shadow); padding:36px 32px; width:100%; max-width:360px;
+    background: rgba(255, 255, 255, 0.4) !important;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 360px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #ffffff;
   }
-  .brand{font-size:1.3rem; font-weight:700; display:flex; align-items:center; gap:8px}
-  .tag{color:var(--muted); font-size:.9rem; margin:6px 0 24px; line-height:1.4}
+  .brand{font-size:2rem; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px}
+  .brand-logo{width:50px; height:50px; object-fit:contain;}
+  .tag{color:#ffffff !important; font-size:.9rem; margin:6px 0 24px; line-height:1.4}
   .field{display:block; font-size:.85rem; color:var(--muted); margin-bottom:14px}
   .field input{
-    display:block; width:100%; margin-top:6px; padding:10px 12px; border-radius:var(--radius-sm);
-    border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:.95rem;
+  display:block; width:100%; margin-top:6px; padding:10px 12px; border-radius:var(--radius-sm); font-size:.95rem;
+  border:1px solid rgba(255, 255, 255, 0.3) !important;
+  background:rgba(255, 255, 255, 0.15) !important;
+  color:#ffffff !important;
+  outline:none;
+  }
+  .field input::placeholder {
+  color: #ffffff !important;
+  opacity: 1;
   }
   .btn{border:none; border-radius:var(--radius-sm); padding:10px 16px; font-size:.9rem; font-weight:600}
-  .btn.primary{background:var(--primary); color:var(--primary-ink)}
+  .btn.primary{background:#ffffff !important; color:#747575 !important; cursor:pointer; transition:transform 0.2s ease, background 0.2s ease}
+  .btn.primary:hover{background:rgba(255,255,255,0.9) !important; transform:translateY(-1px)}
   .btn.full{width:100%; margin-top:6px}
   .btn.ghost{background:transparent; border:1px solid var(--border); color:var(--text)}
   .btn.link{background:none; border:none; color:var(--primary); font-weight:600; padding:4px 0}
   .hint{font-size:.78rem; color:var(--muted); margin-top:14px; text-align:center}
+
+  .tag {
+  text-align: center; /* Centra el texto */
+  font-size: 1.01rem;  /* Ajusta el tamaño (puedes probar con 0.85rem, 1rem, 1.1rem, etc.) */
+  color: var(--muted); /* Mantiene el color que ya tenías */
+  margin: 6px 0 24px;
+  line-height: 1.4;
+  }
 
   /* ---- App shell ---- */
   .topbar{
@@ -127,24 +153,33 @@
     .topbar .btn{order:2; margin-left:auto}
   }
 </style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&display=swap" rel="stylesheet">
 </head>
 <body>
 <div id="app">
 
   <section id="view-login" class="view active">
     <form class="login-card" id="loginForm">
-      <div class="brand">✨ Col360</div>
-      <p class="tag">Un solo usuario y una sola contraseña para acceder a todos los servicios públicos.</p>
-      <label class="field">Usuario<input id="user" required placeholder="tu.usuario"></label>
-      <label class="field">Contraseña<input id="pass" type="password" required placeholder="••••••••"></label>
-      <button type="submit" class="btn primary full">Iniciar sesión</button>
-      <p class="hint">Demo del MVP — cualquier usuario y contraseña funcionan</p>
+      <div class="brand">
+        <img src="https://media.discordapp.net/attachments/1552109107413254155/1552127871403696228/imagen_2026-09-22_202137217-removebg-preview.png?ex=6ab47b39&is=6ab329b9&hm=5255bad5eb1dea7eec5084828be992131a07bad383c6d13a80868c18c6b90e5c&=&format=webp&quality=lossless" alt="Logo Col360" class="brand-logo">
+        <span>Col360</span>
+      </div>
+      <p class="tag">Un solo acceso para todos tus servicios públicos.</p>
+      <label class="field"><input id="user" required placeholder="Usuario"></label>
+      <label class="field"><input id="pass" type="password" required placeholder="Contraseña"></label>
+      <button type="submit" class="btn primary full">¡Bienvenido!</button>
+      <!--p class="hint">Aqui el texto</p-->
     </form>
   </section>
 
   <section id="view-app" class="view">
     <header class="topbar">
-      <div class="brand">✨ Col360</div>
+      <div class="brand">
+        <img src="https://media.discordapp.net/attachments/1552109107413254155/1552127871403696228/imagen_2026-09-22_202137217-removebg-preview.png?ex=6ab47b39&is=6ab329b9&hm=5255bad5eb1dea7eec5084828be992131a07bad383c6d13a80868c18c6b90e5c&=&format=webp&quality=lossless" alt="Logo Col360" class="brand-logo">
+        <span>Col360</span>
+      </div>
       <input id="search" placeholder="¿Qué servicio necesitas?" oninput="onSearch()">
       <button class="btn ghost" onclick="logout()">Salir</button>
     </header>
