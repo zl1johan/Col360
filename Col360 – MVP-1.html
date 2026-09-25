@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Col360 – MVP</title>
+<style>
+  :root{
+    --bg:#eef1f7; --surface:#ffffff; --text:#161c2b; --muted:#5b6478;
+    --primary:#1e4ed8; --primary-ink:#ffffff; --gold:#c97f1f; --gold-bg:#fbeed9;
+    --ok:#1f8a4c; --ok-bg:#e3f5ea; --info:#0f7d8c; --info-bg:#e1f2f4;
+    --border:#dde2ee; --radius-lg:18px; --radius-sm:10px;
+    --shadow:0 16px 40px -20px rgba(20,30,70,.35);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1220; --surface:#161c2e; --text:#eef1f7; --muted:#93a0bf; --border:#2a3350;
+      --gold-bg:#3a2c12; --ok-bg:#123424; --info-bg:#0f2e33;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1220; --surface:#161c2e; --text:#eef1f7; --muted:#93a0bf; --border:#2a3350;
+    --gold-bg:#3a2c12; --ok-bg:#123424; --info-bg:#0f2e33;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  button{font-family:inherit; cursor:pointer}
+  input{font-family:inherit}
+  .view{display:none}
+  .view.active{display:block}
+
+  /* ---- Login ---- */
+  #view-login.active{display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px}
+  .login-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    box-shadow:var(--shadow); padding:36px 32px; width:100%; max-width:360px;
+  }
+  .brand{font-size:1.3rem; font-weight:700; display:flex; align-items:center; gap:8px}
+  .tag{color:var(--muted); font-size:.9rem; margin:6px 0 24px; line-height:1.4}
+  .field{display:block; font-size:.85rem; color:var(--muted); margin-bottom:14px}
+  .field input{
+    display:block; width:100%; margin-top:6px; padding:10px 12px; border-radius:var(--radius-sm);
+    border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:.95rem;
+  }
+  .btn{border:none; border-radius:var(--radius-sm); padding:10px 16px; font-size:.9rem; font-weight:600}
+  .btn.primary{background:var(--primary); color:var(--primary-ink)}
+  .btn.full{width:100%; margin-top:6px}
+  .btn.ghost{background:transparent; border:1px solid var(--border); color:var(--text)}
+  .btn.link{background:none; border:none; color:var(--primary); font-weight:600; padding:4px 0}
+  .hint{font-size:.78rem; color:var(--muted); margin-top:14px; text-align:center}
+
+  /* ---- App shell ---- */
+  .topbar{
+    display:flex; align-items:center; gap:14px; padding:14px 20px;
+    border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:5;
+  }
+  .topbar .brand{font-size:1.05rem; white-space:nowrap}
+  #search{
+    flex:1; padding:9px 14px; border-radius:999px; border:1px solid var(--border);
+    background:var(--bg); color:var(--text); font-size:.9rem;
+  }
+  main{max-width:900px; margin:0 auto; padding:24px 20px 60px}
+  .crumb{max-width:900px; margin:0 auto; padding:14px 20px 0; display:flex; align-items:center; gap:10px}
+  .crumb span{color:var(--muted); font-size:.9rem}
+
+  h1{font-size:1.3rem; margin:0 0 4px}
+  h2{font-size:1.05rem; margin:28px 0 12px}
+  .lead{color:var(--muted); font-size:.92rem; margin:0 0 20px}
+
+  .cat-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:12px}
+  .cat-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    padding:18px 14px; text-align:left;
+  }
+  .cat-card .ic{font-size:1.6rem; display:block; margin-bottom:10px}
+  .cat-card .nm{font-weight:600; font-size:.92rem}
+
+  .item-list{display:flex; flex-direction:column; gap:8px}
+  .item-row{
+    display:flex; align-items:center; justify-content:space-between; text-align:left;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm);
+    padding:13px 16px; font-size:.92rem;
+  }
+  .item-row span.arrow{color:var(--muted)}
+
+  .detail-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px}
+  .detail-card .field input, .detail-card .field textarea{
+    display:block; width:100%; margin-top:6px; padding:10px 12px; border-radius:var(--radius-sm);
+    border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:.92rem; font-family:inherit;
+  }
+
+  table.solic{width:100%; border-collapse:collapse; font-size:.9rem}
+  table.solic td{padding:11px 4px; border-bottom:1px solid var(--border)}
+  table.solic tr:last-child td{border-bottom:none}
+  .badge{padding:4px 10px; border-radius:999px; font-size:.78rem; font-weight:600; white-space:nowrap}
+  .badge.Pendiente{background:var(--gold-bg); color:var(--gold)}
+  .badge.En.proceso, .badge[data-e="En proceso"]{background:var(--info-bg); color:var(--info)}
+  .badge[data-e="Completado"]{background:var(--ok-bg); color:var(--ok)}
+
+  #searchResults{max-width:900px; margin:16px auto 0; padding:0 20px}
+
+  .fab{
+    position:fixed; bottom:calc(22px + env(safe-area-inset-bottom,0px)); right:22px; width:52px; height:52px;
+    border-radius:50%; border:none; background:var(--primary); color:var(--primary-ink); font-size:1.2rem;
+    box-shadow:var(--shadow); z-index:10;
+  }
+  .help-panel{
+    position:fixed; bottom:calc(84px + env(safe-area-inset-bottom,0px)); right:22px; width:300px; max-width:calc(100vw - 44px);
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+    box-shadow:var(--shadow); padding:20px; z-index:10;
+  }
+  .help-panel h3{margin:0 0 8px; font-size:1rem}
+  .help-panel p{font-size:.85rem; color:var(--muted); line-height:1.5; margin:0 0 14px}
+  details{border-top:1px solid var(--border); padding:10px 0; font-size:.85rem}
+  details summary{cursor:pointer; font-weight:600}
+  details p{margin:8px 0 0}
+
+  @media (max-width:520px){
+    .topbar{flex-wrap:wrap}
+    .topbar .brand{order:1}
+    #search{order:3; flex-basis:100%}
+    .topbar .btn{order:2; margin-left:auto}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <section id="view-login" class="view active">
+    <form class="login-card" id="loginForm">
+      <div class="brand">✨ Col360</div>
+      <p class="tag">Un solo usuario y una sola contraseña para acceder a todos los servicios públicos.</p>
+      <label class="field">Usuario<input id="user" required placeholder="tu.usuario"></label>
+      <label class="field">Contraseña<input id="pass" type="password" required placeholder="••••••••"></label>
+      <button type="submit" class="btn primary full">Iniciar sesión</button>
+      <p class="hint">Demo del MVP — cualquier usuario y contraseña funcionan</p>
+    </form>
+  </section>
+
+  <section id="view-app" class="view">
+    <header class="topbar">
+      <div class="brand">✨ Col360</div>
+      <input id="search" placeholder="¿Qué servicio necesitas?" oninput="onSearch()">
+      <button class="btn ghost" onclick="logout()">Salir</button>
+    </header>
+
+    <div class="crumb" id="crumb" style="display:none">
+      <button class="btn link" onclick="goHome()">← Volver</button>
+      <span id="crumbTitle"></span>
+    </div>
+
+    <div id="searchResults"></div>
+    <main id="mainArea"></main>
+  </section>
+
+  <button class="fab" id="helpBtn" onclick="toggleHelp()">❓</button>
+  <div class="help-panel" id="helpPanel" style="display:none">
+    <h3>Soporte</h3>
+    <p>Col360 reúne los servicios públicos del país en un solo lugar: salud, transporte, registraduría, educación, hogar y trámites laborales.</p>
+    <details>
+      <summary>¿Cómo agendo un trámite?</summary>
+      <p>Entra a la categoría del servicio, elige el trámite específico y confirma la solicitud. Verás el estado en "Mis solicitudes".</p>
+    </details>
+    <details>
+      <summary>¿Por qué un solo usuario?</summary>
+      <p>Para no tener que crear una cuenta distinta en cada entidad del Estado.</p>
+    </details>
+    <details>
+      <summary>¿Dónde reporto un problema?</summary>
+      <p>Usa "Quejas y Reclamos" dentro de la categoría correspondiente.</p>
+    </details>
+  </div>
+
+</div>
+
+<script>
+const services = {
+  salud:{icon:'🏥', name:'Salud', items:['Citas Médicas','Historia Clínica','Atención Médica','Medicamentos','EPS','Vacunación','Exámenes','Quejas y Reclamos','Info General']},
+  transporte:{icon:'🚌', name:'Transporte', items:['Rutas y Horarios','Tarjeta de Transporte','Estado de Vías','Quejas y Reclamos']},
+  registraduria:{icon:'🪪', name:'Registraduría', items:['Agendar Cita','Cédula','Certificados','Estado del Trámite']},
+  educacion:{icon:'🎓', name:'Educación', items:['Colegios Públicos','Becas','Validación de Título','Info General']},
+  hogar:{icon:'🏠', name:'Servicios de Hogar', items:['Agua y Alcantarillado','Energía','Gas','Reportar Falla']},
+  laboral:{icon:'💼', name:'Información Laboral', items:['Bolsa de Empleo','Seguridad Social','Certificado Laboral','Quejas y Reclamos']}
+};
+
+let misSolicitudes = [
+  {servicio:'Salud · Cita Medicina General', estado:'En proceso'},
+  {servicio:'Registraduría · Certificado', estado:'Completado'}
+];
+
+let state = {cat:null, item:null};
+
+document.getElementById('loginForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  document.getElementById('view-login').classList.remove('active');
+  document.getElementById('view-app').classList.add('active');
+  goHome();
+});
+
+function logout(){
+  document.getElementById('view-app').classList.remove('active');
+  document.getElementById('view-login').classList.add('active');
+  document.getElementById('search').value='';
+  document.getElementById('helpPanel').style.display='none';
+}
+
+function setCrumb(text){
+  const c = document.getElementById('crumb');
+  if(text){ c.style.display='flex'; document.getElementById('crumbTitle').textContent = text; }
+  else { c.style.display='none'; }
+}
+
+function badge(estado){
+  return '<span class="badge" data-e="'+estado+'">'+estado+'</span>';
+}
+
+function renderDashboard(){
+  state.cat=null; state.item=null; setCrumb('');
+  let cats = Object.entries(services).map(([key,s])=>
+    '<button class="cat-card" onclick="openCategory(\''+key+'\')"><span class="ic">'+s.icon+'</span><span class="nm">'+s.name+'</span></button>'
+  ).join('');
+
+  let rows = misSolicitudes.map(r=>
+    '<tr><td>'+r.servicio+'</td><td style="text-align:right">'+badge(r.estado)+'</td></tr>'
+  ).join('');
+
+  document.getElementById('mainArea').innerHTML = `
+    <h1>¿Qué servicio necesitas?</h1>
+    <p class="lead">Consulta, agenda y haz seguimiento a los trámites del Estado desde un solo lugar.</p>
+    <div class="cat-grid">${cats}</div>
+    <h2>Mis solicitudes</h2>
+    <table class="solic"><tbody>${rows}</tbody></table>
+  `;
+}
+
+function openCategory(key){
+  state.cat=key; state.item=null;
+  const s = services[key];
+  setCrumb(s.name);
+  let rows = s.items.map(it=>
+    '<button class="item-row" onclick="openItem(\''+key+'\',\''+it.replace(/'/g,"\\'")+'\')"><span>'+it+'</span><span class="arrow">›</span></button>'
+  ).join('');
+  document.getElementById('mainArea').innerHTML = `
+    <h1>${s.icon} ${s.name}</h1>
+    <p class="lead">Elige el trámite o servicio que quieres consultar.</p>
+    <div class="item-list">${rows}</div>
+  `;
+}
+
+function openItem(key,item){
+  state.item=item;
+  const s = services[key];
+  setCrumb(s.name+' › '+item);
+  document.getElementById('mainArea').innerHTML = `
+    <div class="detail-card">
+      <h1>${item}</h1>
+      <p class="lead">${s.name} · Completa los datos para radicar tu solicitud.</p>
+      <form onsubmit="submitSolicitud(event,'${s.name} · ${item.replace(/'/g,"\\'")}')">
+        <label class="field">Fecha preferida<input type="date"></label>
+        <label class="field">Nota (opcional)<textarea rows="3" placeholder="Detalles adicionales..."></textarea></label>
+        <button class="btn primary" type="submit">Confirmar solicitud</button>
+      </form>
+    </div>
+  `;
+}
+
+function submitSolicitud(e,label){
+  e.preventDefault();
+  misSolicitudes.unshift({servicio:label, estado:'Pendiente'});
+  renderDashboard();
+}
+
+function goHome(){ renderDashboard(); }
+
+function onSearch(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const box = document.getElementById('searchResults');
+  if(!q){ box.innerHTML=''; document.getElementById('mainArea').style.display='block'; return; }
+  document.getElementById('mainArea').style.display='none';
+  setCrumb('');
+  let matches = [];
+  Object.entries(services).forEach(([key,s])=>{
+    s.items.forEach(it=>{
+      if((s.name+' '+it).toLowerCase().includes(q)) matches.push({key,item:it,label:s.name+' › '+it});
+    });
+  });
+  if(matches.length===0){
+    box.innerHTML = '<p class="lead">Sin resultados para "'+q+'".</p>';
+    return;
+  }
+  box.innerHTML = '<div class="item-list">'+matches.map(m=>
+    '<button class="item-row" onclick="document.getElementById(\'search\').value=\'\'; onSearch(); openItem(\''+m.key+'\',\''+m.item.replace(/'/g,"\\'")+'\')"><span>'+m.label+'</span><span class="arrow">›</span></button>'
+  ).join('')+'</div>';
+}
+
+function toggleHelp(){
+  const p = document.getElementById('helpPanel');
+  p.style.display = p.style.display==='none' ? 'block' : 'none';
+}
+</script>
+</body>
+</html>
