@@ -1267,7 +1267,7 @@
         const card = document.createElement("section");
         card.className = "web-preview-card";
         const image = document.createElement("img");
-        image.src = `data:image/png;base64,${screenshot}`;
+        image.src = `data:image/jpeg;base64,${screenshot}`;
         image.alt = "Captura real del formulario en Chrome, pausado antes del envío";
         card.append(image);
 
@@ -1330,8 +1330,16 @@
             throw new Error("El servidor no devolvió la confirmación, la captura y la referencia del trámite.");
           }
           const image = card.querySelector("img");
-          image.src = `data:image/png;base64,${result.screenshot}`;
+          image.src = `data:image/jpeg;base64,${result.screenshot}`;
           image.alt = "Captura final del formulario después de confirmarlo";
+          if (!result.sent || !result.radicado) {
+            const reply = "No se encontró o no se pudo activar el botón principal del portal. No se confirmó el envío; revisa la captura y continúa manualmente si corresponde.";
+            status.textContent = reply;
+            state.chatHistory.push({ role: "assistant", content: reply });
+            appendMessage(reply, "agent");
+            finishWebPreview();
+            return;
+          }
           const datos = pending.datos;
           const item = {
             id: result.radicado,

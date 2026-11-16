@@ -19,9 +19,15 @@ if (fs.existsSync(ENV_FILE)) {
 }
 
 const PORT = Number(process.env.PORT || 3000);
-const TARGET_URL = process.env.TARGET_URL || "https://httpbin.org/forms/post";
 const GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const OFFICIAL_PORTAL_DOMAINS = [
+  "gov.co",
+  "saludtotal.com.co",
+  "nuevaeps.com.co",
+  "epssanitas.com",
+  "epssura.com",
+];
 let cachedGroqApiKey = "";
 let cachedGroqModel = "";
 const REQUIRED_FIELDS = [
@@ -33,6 +39,7 @@ const REQUIRED_FIELDS = [
   "servicio",
   "fecha",
   "hora",
+  "url_portal",
 ];
 const FIELD_LABELS = {
   nombre_completo: "nombre completo",
@@ -43,15 +50,16 @@ const FIELD_LABELS = {
   servicio: "tipo de servicio",
   fecha: "fecha",
   hora: "hora",
+  url_portal: "URL oficial del portal",
 };
 
-const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Ayudas a los ciudadanos a resolver dudas de trámites y a agendar citas. REGLA OBLIGATORIA: Antes de ejecutar la herramienta 'ejecutar_tramite_web', verifica que tengas TODOS los datos obligatorios del ciudadano: nombre completo, número de documento/cédula, correo electrónico, ciudad, entidad, tipo de servicio, fecha y hora. Revisa primero los datos de sesión del usuario que te llegan en el contexto; si falta alguno de esos datos, NO llames todavía a la herramienta y pídele al usuario de forma amable y directa en una sola respuesta los datos exactos que faltan. Solo cuando tengas los 8 datos completos, invoca 'ejecutar_tramite_web'.`;
+const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Ayudas a los ciudadanos a resolver dudas de trámites y a agendar citas. REGLA OBLIGATORIA: Antes de ejecutar la herramienta 'ejecutar_tramite_web', verifica que tengas TODOS los datos obligatorios del ciudadano: nombre completo, número de documento/cédula, correo electrónico, ciudad, entidad, tipo de servicio, fecha y hora. Revisa primero los datos de sesión del usuario que te llegan en el contexto; si falta alguno de esos datos, NO llames todavía a la herramienta y pídele al usuario de forma amable y directa en una sola respuesta los datos exactos que faltan. Solo cuando tengas los 8 datos del ciudadano y la URL oficial real de la entidad, invoca 'ejecutar_tramite_web'. En url_portal usa una dirección HTTPS oficial de Colombia para la entidad solicitada. Ejemplos: Salud Total https://www.saludtotal.com.co/, Nueva EPS https://www.nuevaeps.com.co/, EPS Sanitas https://www.epssanitas.com/, EPS Sura https://www.epssura.com/, Registraduría https://www.registraduria.gov.co/, DIAN https://www.dian.gov.co/ y MinSalud https://www.minsalud.gov.co/. No inventes dominios; el navegador solo acepta dominios oficiales gubernamentales o EPS permitidas.`;
 
 const tool = {
   type: "function",
   function: {
     name: "ejecutar_tramite_web",
-    description: "Diligencia un formulario web y lo deja listo para revisión, sin enviarlo.",
+    description: "Abre el portal oficial indicado, diligencia los campos visibles coincidentes y lo deja listo para revisión, sin enviarlo.",
     parameters: {
       type: "object",
       properties: {
@@ -64,6 +72,7 @@ const tool = {
         fecha: { type: "string", description: "Fecha solicitada." },
         hora: { type: "string", description: "Hora solicitada." },
         observaciones: { type: "string", description: "Observaciones opcionales." },
+        url_portal: { type: "string", description: "URL HTTPS oficial del portal colombiano de la entidad." },
       },
       required: REQUIRED_FIELDS,
     },
@@ -83,6 +92,9 @@ app.use(cors(corsOptions));
 // Express 5 rejects "*" as a route pattern; this regex matches every OPTIONS path.
 app.options(/.*/, cors());
 app.use(express.json({ limit: "256kb" }));
+const healthHandler = (req, res) => res.json({ status: "online", agent: "Col360" });
+app.get("/", healthHandler);
+app.get("/health", healthHandler);
 
 function requireAgentToken(req, res, next) {
   const authorization = req.get("authorization") || "";
@@ -141,17 +153,82 @@ function parseToolArguments(raw) {
   return { missing: [], args: normalized };
 }
 
-function validateTargetUrl() {
-  let target;
+function validatePortalUrl(value) {
+  let portal;
   try {
-    target = new URL(TARGET_URL);
+    portal = new URL(value);
   } catch {
-    throw new Error("TARGET_URL debe ser una URL absoluta válida.");
+    throw new Error("url_portal debe ser una URL absoluta válida.");
   }
-  if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) {
-    throw new Error("TARGET_URL debe usar HTTP o HTTPS y no puede contener credenciales.");
+  const hostname = portal.hostname.toLowerCase().replace(/\.$/, "");
+  const isOfficialDomain = OFFICIAL_PORTAL_DOMAINS.some((domain) =>
+    hostname === domain || hostname.endsWith(`.${domain}`));
+  if (portal.protocol !== "https:" || portal.username || portal.password || portal.port || !isOfficialDomain) {
+    throw new Error("url_portal debe usar HTTPS y pertenecer a un dominio gubernamental o EPS oficial permitido.");
   }
-  return target.toString();
+  return portal.toString();
+}
+
+function normalizeFieldDescription(value) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+async function fillVisibleFields(page, args) {
+  const fields = page.locator(
+    'input:visible:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="checkbox"]):not([type="radio"]), textarea:visible, select:visible'
+  );
+  const count = await fields.count();
+  for (let index = 0; index < count; index += 1) {
+    const field = fields.nth(index);
+    try {
+      const metadata = await field.evaluate((element) => {
+        const labels = element.labels
+          ? Array.from(element.labels, (label) => label.innerText).join(" ")
+          : "";
+        return {
+          tag: element.tagName.toLowerCase(),
+          text: [
+            element.name,
+            element.id,
+            element.getAttribute("placeholder"),
+            element.getAttribute("aria-label"),
+            element.getAttribute("autocomplete"),
+            labels,
+          ].filter(Boolean).join(" "),
+        };
+      });
+      const description = normalizeFieldDescription(metadata.text);
+      const key = /(document|cedula|identificacion|identity)/.test(description)
+        ? "documento"
+        : /(nombre|full.?name|first.?name|last.?name|(^|[_\s-])name($|[_\s-]))/.test(description)
+          ? "nombre_completo"
+          : /(correo|e.?mail)/.test(description)
+            ? "correo"
+            : /(ciudad|city|municipio|localidad)/.test(description)
+              ? "ciudad"
+              : "";
+      if (!key || !args[key]) continue;
+
+      if (metadata.tag === "select") {
+        const value = await field.locator("option").evaluateAll((options, city) => {
+          const normalize = (text) => String(text || "").normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+          const target = normalize(city);
+          const match = options.find((option) =>
+            normalize(option.label) === target || normalize(option.value) === target)
+            || options.find((option) => normalize(option.label).includes(target));
+          return match ? match.value : null;
+        }, args[key]);
+        if (value !== null) await field.selectOption(value, { timeout: 1000 });
+      } else {
+        await field.fill(args[key], { timeout: 1000 });
+      }
+    } catch (error) {
+      if (error.name !== "TimeoutError") {
+        console.warn("No se pudo completar un campo visible del portal:", error.message);
+      }
+    }
+  }
 }
 
 async function getActiveGroqModel(apiKey) {
@@ -229,7 +306,7 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
       const detail = payload && payload.error && payload.error.message;
-      return res.status(502).json({ error: detail || `Groq respondió con estado ${response.status}.` });
+      return res.status(500).json({ error: detail || `Groq respondió con estado ${response.status}.` });
     }
 
     const choice = payload && payload.choices && payload.choices[0];
@@ -239,12 +316,12 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
       const reply = assistantMessage && typeof assistantMessage.content === "string"
         ? assistantMessage.content.trim()
         : "";
-      if (!reply) return res.status(502).json({ error: "Groq no devolvió texto ni una acción válida." });
+      if (!reply) return res.status(500).json({ error: "Groq no devolvió texto ni una acción válida." });
       return res.json({ type: "text", reply });
     }
 
     if (calls.length !== 1 || calls[0].function.name !== "ejecutar_tramite_web") {
-      return res.status(502).json({ error: "Groq devolvió una acción no reconocida." });
+      return res.status(500).json({ error: "Groq devolvió una acción no reconocida." });
     }
     const parsed = parseToolArguments(calls[0].function.arguments);
     if (parsed.missing.length) {
@@ -255,28 +332,36 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
       });
     }
 
-    const targetUrl = validateTargetUrl();
-    const browser = await chromium.launch({ headless: false, slowMo: 300 });
+    const portalUrl = validatePortalUrl(parsed.args.url_portal);
+    const browser = await chromium.launch({ headless: false, slowMo: 250 });
     try {
       const page = await browser.newPage();
-      await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await page.locator('[name="custname"]').fill(`${parsed.args.nombre_completo} - CC: ${parsed.args.documento}`);
-      await page.locator('[name="custtel"]').fill(`${parsed.args.entidad} (${parsed.args.ciudad})`);
-      await page.locator('[name="custemail"]').fill(parsed.args.correo);
-      await page.locator('[name="delivery"]').fill(`${parsed.args.fecha} ${parsed.args.hora}`);
-      await page.locator('[name="comments"]').fill(`${parsed.args.servicio} | ${parsed.args.observaciones}`);
+      page.setDefaultTimeout(1000);
+      await page.goto(portalUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await fillVisibleFields(page, parsed.args);
 
-      const submit = page.locator('button[type="submit"], input[type="submit"]').first();
-      await submit.waitFor({ state: "visible", timeout: 10000 });
-      await submit.evaluate((button) => {
-        button.style.outline = "4px solid #dc2626";
-        button.style.outlineOffset = "3px";
-      });
-      const screenshot = (await page.screenshot({ fullPage: true })).toString("base64");
-      activeSession = { browser, page, args: parsed.args };
+      let submitButton = null;
+      try {
+        const candidate = page.locator(
+          'button[type="submit"]:visible, input[type="submit"]:visible, button:visible:has-text("Enviar"), button:visible:has-text("Agendar"), button:visible:has-text("Consultar"), button:visible:has-text("Ingresar"), button:visible:has-text("Continuar"), a:visible:has-text("Citas"), a:visible:has-text("Oficina Virtual")'
+        ).first();
+        await candidate.waitFor({ state: "visible", timeout: 2000 });
+        await candidate.scrollIntoViewIfNeeded({ timeout: 2000 });
+        await candidate.evaluate((button) => {
+          button.style.outline = "4px solid #dc2626";
+          button.style.outlineOffset = "3px";
+        });
+        submitButton = candidate;
+      } catch (error) {
+        console.warn("No se encontró un botón principal visible en el portal:", error.message);
+      }
+
+      const screenshot = (await page.screenshot({ type: "jpeg", quality: 70 })).toString("base64");
+      activeSession = { browser, page, args: parsed.args, submitButton };
       return res.json({
         type: "preview",
-        reply: "He ingresado al portal externo y diligenciado tus datos. Me he detenido antes de enviar para que confirmes:",
+        reply: `He ingresado al portal oficial de ${parsed.args.entidad} y me he detenido antes de continuar/enviar. Revisa la captura:`,
         screenshot,
         datos: parsed.args,
       });
@@ -286,7 +371,7 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
     }
   } catch (error) {
     console.error("Error en /api/chat:", error);
-    return res.status(502).json({ error: error.message || "No fue posible preparar la previsualización." });
+    return res.status(500).json({ error: error.message || "No fue posible preparar la previsualización." });
   } finally {
     chatInProgress = false;
   }
@@ -299,19 +384,25 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
   const session = activeSession;
   activeSession = null;
   try {
-    const submit = session.page.locator('button[type="submit"], input[type="submit"]').first();
-    await submit.click({ timeout: 10000 });
-    await session.page.waitForTimeout(1000);
-    const screenshot = (await session.page.screenshot({ fullPage: true })).toString("base64");
-    const radicado = `COL360-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+    let radicado = "";
+    if (session.submitButton) {
+      try {
+        await session.submitButton.click({ timeout: 2000 });
+        radicado = `COL360-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      } catch (error) {
+        console.warn("No se pudo activar el botón principal del portal:", error.message);
+      }
+    }
+    await session.page.waitForTimeout(1500);
+    const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 70 })).toString("base64");
     await session.browser.close();
-    return res.json({ ok: true, screenshot, radicado });
+    return res.json({ ok: true, screenshot, radicado, sent: Boolean(radicado) });
   } catch (error) {
     await session.browser.close().catch((closeError) => {
       console.error("No se pudo cerrar Chromium tras fallar la confirmación:", closeError);
     });
     console.error("Error en /api/confirm:", error);
-    return res.status(502).json({ error: error.message || "No fue posible confirmar el formulario." });
+    return res.status(500).json({ error: error.message || "No fue posible confirmar el formulario." });
   } finally {
     confirmationInProgress = false;
   }
@@ -335,6 +426,12 @@ app.post("/api/cancel", requireAgentToken, async (req, res) => {
     }
   }
   return res.json({ ok: true });
+});
+
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  console.error("Error no controlado en Express:", err.message);
+  return res.status(500).json({ error: err.message || "Error interno del servidor." });
 });
 
 if (!process.env.COL360_AGENT_TOKEN) {
