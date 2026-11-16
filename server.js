@@ -527,9 +527,10 @@ app.post("/api/captcha", requireAgentToken, async (req, res) => {
 });
 
 app.post("/api/confirm", requireAgentToken, async (req, res) => {
+  const captchaCode = String((req.body && (req.body.captcha || req.body.code)) || "").trim();
   if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
   if (!activeSession) return res.status(409).json({ error: "No hay una previsualización activa para confirmar." });
-  if (activeSession.requiresCaptcha) {
+  if (activeSession.requiresCaptcha && !captchaCode) {
     return res.status(409).json({ error: "Primero ingresa el código CAPTCHA desde la previsualización." });
   }
   confirmationInProgress = true;
@@ -537,6 +538,22 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
   activeSession = null;
   lastPreviewData = null;
   try {
+    if (session.isAdres && captchaCode) {
+      const captchaSelectors =
+        '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
+      let captchaField = session.page.locator(captchaSelectors).first();
+      if (await captchaField.count() === 0) {
+        captchaField = session.page.locator('input[type="text"]:visible').nth(1);
+      }
+      await captchaField.waitFor({ state: "visible", timeout: 1500 });
+      await captchaField.click({ timeout: 1500 });
+      await captchaField.fill(captchaCode, { timeout: 1500 });
+      await captchaField.evaluate((element) => {
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+
     let submitError = null;
     const submitButton = session.isAdres
       ? session.page.locator("#btnConsultar, input[type='submit'], input[value*='Consultar' i]").first()
@@ -551,7 +568,7 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
     } else {
       submitError = new Error("No se encontró un botón de consulta resaltado.");
     }
-    await session.page.waitForTimeout(3000);
+    await session.page.waitForTimeout(3500);
     const browserPages = session.page.context().pages().filter((page) => !page.isClosed());
     const finalPage = browserPages[browserPages.length - 1] || session.page;
     const screenshot = (await finalPage.screenshot({ type: "jpeg", quality: 70 })).toString("base64");

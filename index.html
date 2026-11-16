@@ -1490,8 +1490,6 @@
           const image = card.querySelector("img");
           image.src = `data:image/jpeg;base64,${result.screenshot}`;
           image.alt = "Captura actualizada del portal oficial con el código ingresado";
-          const captchaLabel = $(".web-preview-captcha", card);
-          if (captchaLabel) captchaLabel.remove();
           if (sendButton) sendButton.remove();
           const actions = document.createElement("div");
           actions.className = "web-preview-actions";
@@ -1521,13 +1519,21 @@
         $("#agentInput").focus();
       }
 
-      async function confirmWebPreview(card) {
+      async function confirmWebPreview(card, confirmButton) {
         const pending = state.pendingWebSubmission;
         if (!pending) return;
+        const captchaInput = card.querySelector('input[type="text"]');
+        const captchaValue = captchaInput ? captchaInput.value.trim() : "";
+        if (captchaInput && !captchaValue) {
+          window.alert("Escribe el código de la imagen primero");
+          captchaInput.focus();
+          return;
+        }
         if (waitingForCaptcha) return;
         setAgentBusy(true);
         const buttons = $$("[data-preview-action]", card);
         buttons.forEach((button) => { button.disabled = true; });
+        if (confirmButton) confirmButton.textContent = "Consultando...";
         let status = card.querySelector(".web-preview-final");
         if (!status) {
           status = document.createElement("p");
@@ -1536,7 +1542,9 @@
         }
         status.textContent = "Enviando la consulta y esperando la respuesta del portal…";
         try {
-          const result = await serverRequest("/api/confirm");
+          const result = await serverRequest("/api/confirm", captchaInput
+            ? { captcha: captchaValue, code: captchaValue }
+            : {});
           if (typeof result.screenshot === "string") {
             const image = card.querySelector("img");
             image.src = `data:image/jpeg;base64,${result.screenshot}`;
@@ -1648,7 +1656,7 @@
         const button = event.target.closest("[data-preview-action]");
         if (!button || !state.pendingWebSubmission) return;
         const card = button.closest(".web-preview-card");
-        if (button.dataset.previewAction === "confirm") confirmWebPreview(card);
+        if (button.dataset.previewAction === "confirm") confirmWebPreview(card, button);
         if (button.dataset.previewAction === "cancel") cancelWebPreview(card);
       });
       document.addEventListener("keydown", (event) => {
