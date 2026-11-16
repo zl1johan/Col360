@@ -20,7 +20,10 @@ if (fs.existsSync(ENV_FILE)) {
 
 const PORT = Number(process.env.PORT || 3000);
 const TARGET_URL = process.env.TARGET_URL || "https://httpbin.org/forms/post";
+const GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+let cachedGroqApiKey = "";
+let cachedGroqModel = "";
 const REQUIRED_FIELDS = [
   "nombre_completo",
   "documento",
@@ -151,6 +154,37 @@ function validateTargetUrl() {
   return target.toString();
 }
 
+async function getActiveGroqModel(apiKey) {
+  const override = process.env.GROQ_MODEL && process.env.GROQ_MODEL.trim();
+  if (override) return override;
+  if (cachedGroqApiKey === apiKey && cachedGroqModel) return cachedGroqModel;
+
+  const response = await fetch(GROQ_MODELS_URL, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(30000),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = payload && payload.error && payload.error.message;
+    throw new Error(detail || `Groq modelos respondió con estado ${response.status}.`);
+  }
+
+  const excluded = ["whisper", "tts", "guard", "playai"];
+  const models = payload && Array.isArray(payload.data)
+    ? payload.data.filter((model) => model && typeof model.id === "string"
+      && model.active !== false
+      && !excluded.some((term) => model.id.toLowerCase().includes(term)))
+    : [];
+  if (!models.length) throw new Error("Groq no devolvió modelos de chat disponibles para esta cuenta.");
+
+  const preferred = models.find((model) =>
+    ["llama-4", "llama-3", "qwen", "gpt-oss"].some((term) => model.id.toLowerCase().includes(term)));
+  cachedGroqApiKey = apiKey;
+  cachedGroqModel = (preferred || models[0]).id;
+  return cachedGroqModel;
+}
+
 app.post("/api/chat", requireAgentToken, async (req, res) => {
   const { message, userContext, history } = req.body || {};
   if (typeof message !== "string" || !message.trim()) {
@@ -176,6 +210,7 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
   ];
 
   try {
+    const model = await getActiveGroqModel(process.env.GROQ_API_KEY);
     const response = await fetch(GROQ_URL, {
       method: "POST",
       headers: {
@@ -183,7 +218,7 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model,
         messages,
         temperature: 0.2,
         tools: [tool],
