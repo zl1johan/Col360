@@ -1233,10 +1233,17 @@
           const context = state.user
             ? { email: state.user.email, city: state.user.city, name: state.user.name || "" }
             : { email: "", city: "", name: "" };
+          const history = state.chatHistory.slice(-6).map((entry) => ({
+            role: entry && entry.role === "assistant" ? "assistant" : "user",
+            content: String((entry && entry.content) || "")
+              .replace(/data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/]+={0,2}/gi, "[imagen omitida]")
+              .replace(/[a-z0-9+/]{120,}={0,2}/gi, "[contenido omitido]")
+              .slice(0, 1500),
+          }));
           const result = await serverRequest("/api/chat", {
             message: prompt,
             userContext: context,
-            history: state.chatHistory,
+            history,
           });
           state.chatHistory.push({ role: "user", content: prompt });
           if (result.type === "preview") {
@@ -1248,7 +1255,7 @@
             const card = appendWebPreview(result.datos, result.screenshot);
             state.pendingWebSubmission = { datos: result.datos, card };
             state.awaitingApproval = true;
-          } else if (result.type === "text" && typeof result.reply === "string") {
+          } else if ((!result.type || result.type === "text") && typeof result.reply === "string") {
             state.chatHistory.push({ role: "assistant", content: result.reply });
             appendMessage(result.reply, "agent");
           } else {
