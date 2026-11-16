@@ -87,6 +87,7 @@
       .top-actions { display: flex; align-items: center; gap: 12px; }
       .user-summary { color: var(--muted); font-size: 0.8rem; text-align: right; }
       .user-summary strong { display: block; color: var(--ink); }
+      .server-button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 9px; background: #fff; color: var(--blue-dark); font-size: .78rem; font-weight: 700; white-space: nowrap; }
       .button {
         display: inline-flex;
         min-height: 44px;
@@ -225,7 +226,10 @@
         transition: transform 160ms ease, box-shadow 160ms ease;
       }
       .preview-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
-      .preview-card img { width: 39px; height: 39px; margin-bottom: 13px; object-fit: contain; }
+      .preview-card .service-icon { margin: 0 0 13px; color: inherit; font-size: inherit; }
+      .service-icon { display: grid; flex: 0 0 auto; place-items: center; }
+      .service-icon svg { display: block; width: 43px; height: 43px; }
+      .preview-card .service-icon svg { width: 39px; height: 39px; }
       .preview-card strong { font-size: .97rem; }
       .preview-card span { margin-top: 3px; color: var(--muted); font-size: .8rem; }
       .benefits-strip {
@@ -324,7 +328,6 @@
         transition: transform 150ms ease, box-shadow 150ms ease;
       }
       .service-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-      .service-card img { width: 43px; height: 43px; flex: 0 0 auto; object-fit: contain; }
       .service-card strong { display: block; color: var(--ink); font-size: .93rem; }
       .service-card small { display: block; margin-top: 2px; color: var(--muted); font-size: .78rem; }
       .service-arrow { margin-left: auto; color: var(--blue); font-size: 1.3rem; }
@@ -378,8 +381,6 @@
       .agent-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; background: var(--blue-dark); color: #fff; }
       .agent-header strong { display: block; }
       .agent-header small { color: #d8e5fb; }
-      .agent-header-actions { display: flex; align-items: center; gap: 7px; }
-      .api-key-button { padding: 7px 9px; border: 1px solid rgba(255,255,255,.28); border-radius: 8px; background: rgba(255,255,255,.1); color: #fff; font-size: .75rem; font-weight: 700; white-space: nowrap; }
       .icon-button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; font-size: 1.25rem; }
       .agent-log { display: flex; min-height: 155px; flex: 1; flex-direction: column; gap: 10px; overflow-y: auto; padding: 16px; background: #f8faff; }
       .chat-message { max-width: 91%; padding: 10px 12px; border-radius: 13px; background: #fff; box-shadow: 0 2px 8px rgba(22, 44, 80, .07); font-size: .85rem; white-space: pre-wrap; }
@@ -392,33 +393,14 @@
       .agent-form input { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; outline-color: var(--blue); }
       .agent-form button { width: 44px; flex: 0 0 auto; border: 0; border-radius: 10px; background: var(--blue); color: #fff; font-size: 1.1rem; }
       .agent-form button:disabled, .quick-orders button:disabled { cursor: wait; opacity: .55; }
-      .api-key-card { width: min(475px, 100%); padding: 28px; border-radius: 18px; background: #fff; box-shadow: 0 22px 70px rgba(8,24,50,.22); }
-      .api-key-card h2 { margin: 0 0 8px; font-size: 1.35rem; }
-      .api-key-card p { color: var(--muted); font-size: .86rem; }
-      .api-key-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 9px; margin-top: 16px; }
-      .key-status { min-height: 20px; margin: 10px 0 0; color: var(--green); font-size: .82rem; }
-      .action-card { width: min(760px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; padding: 26px; border: 1px solid #edf0f5; border-radius: 20px; background: #fff; box-shadow: 0 22px 70px rgba(8,24,50,.22); }
-      .action-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-      .action-head h2 { margin: 0; font-size: 1.4rem; }
-      .action-head p { margin: 5px 0 0; color: var(--muted); font-size: .85rem; }
-      .action-head a { flex: 0 0 auto; color: var(--blue); font-size: .82rem; font-weight: 700; }
-      .action-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 22px 0; padding: 0; list-style: none; }
-      .action-steps li { min-height: 90px; padding: 12px 10px; border: 1px solid var(--border); border-radius: 12px; background: #f8faff; color: var(--muted); font-size: .76rem; }
-      .action-steps li span { display: grid; width: 25px; height: 25px; margin-bottom: 8px; place-items: center; border-radius: 50%; background: #e6ebf3; color: #475671; font-weight: 800; }
-      .action-steps li.active { border-color: #9ab9ed; background: #edf4ff; color: var(--blue-dark); }
-      .action-steps li.active span { background: var(--blue); color: #fff; animation: actionPulse 1s infinite; }
-      .action-steps li.complete { border-color: #b7dfc7; background: #f0faf4; color: #246843; }
-      .action-steps li.complete span { background: #258151; color: #fff; }
-      .action-steps li.paused { border-color: #e8c86b; background: #fff9e8; color: #735710; }
-      .action-steps li.paused span { background: #e6b832; color: #332600; }
-      @keyframes actionPulse { 50% { box-shadow: 0 0 0 5px rgba(22,73,165,.13); } }
-      .action-status { min-height: 25px; margin: 0 0 12px; color: var(--blue-dark); font-size: .88rem; font-weight: 800; }
-      .action-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
-      .action-fields .wide { grid-column: 1 / -1; }
-      .action-fields textarea { min-height: 75px; resize: vertical; }
-      .action-disclaimer { margin: 18px 0 0; padding: 12px; border-radius: 10px; background: #fff7e5; color: #674d12; font-size: .8rem; }
-      .action-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 17px; }
-      .action-buttons .button:disabled { cursor: not-allowed; opacity: .5; transform: none; box-shadow: none; }
+      .web-preview-card { width: min(100%, 560px); padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(22,44,80,.08); }
+      .web-preview-card img { display: block; width: 100%; max-height: 300px; object-fit: contain; border: 1px solid var(--border); border-radius: 9px; background: #f8faff; }
+      .web-preview-card h3 { margin: 12px 0 8px; font-size: .95rem; }
+      .web-preview-data { display: grid; gap: 4px; margin: 0 0 12px; color: var(--muted); font-size: .76rem; }
+      .web-preview-data strong { color: var(--ink); }
+      .web-preview-actions { display: grid; gap: 8px; }
+      .web-preview-actions .button { width: 100%; }
+      .web-preview-final { margin-top: 10px; color: var(--green); font-size: .8rem; font-weight: 700; }
       .login-overlay {
         position: fixed;
         z-index: 20;
@@ -494,13 +476,7 @@
         .appointments-list { grid-template-columns: 1fr; }
         .city-banner, .cta-panel { align-items: flex-start; flex-direction: column; }
         .dashboard-wrap { padding-top: 28px; }
-        .action-card { padding: 20px 16px; }
-        .action-steps { grid-template-columns: 1fr 1fr; }
-        .action-steps li { min-height: 76px; }
-        .action-fields { grid-template-columns: 1fr; }
-        .action-fields .wide { grid-column: auto; }
-        .action-buttons { flex-direction: column-reverse; }
-        .action-buttons .button { width: 100%; }
+        .server-button { font-size: .72rem; }
       }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
@@ -529,6 +505,7 @@
       </nav>
       <div class="top-actions">
         <div class="user-summary" id="userSummary" hidden></div>
+        <button class="server-button" id="serverButton" type="button" title="Configurar la URL del servidor y el token de acceso">🔌 Servidor PC</button>
         <button class="button small" id="loginOpen" type="button">Iniciar sesión</button>
       </div>
     </header>
@@ -607,7 +584,7 @@
             <div class="cta-panel">
               <div>
                 <h2>¿Necesitas una mano?</h2>
-                <p>Consulta temas públicos con Gemini y revisa una previsualización antes de aprobar cualquier solicitud.</p>
+                <p>Consulta temas públicos y revisa una previsualización antes de aprobar cualquier solicitud.</p>
               </div>
               <button class="button light" type="button" data-open-agent>Abrir Agente IA</button>
             </div>
@@ -666,21 +643,18 @@
     </button>
     <aside class="agent-panel" id="agentPanel" aria-label="Agente Col360 IA" hidden>
       <div class="agent-header">
-        <div><strong>Agente Col360 IA</strong><small id="agentKeyStatus">Necesitas una API Key para comenzar</small></div>
-        <div class="agent-header-actions">
-          <button class="api-key-button" id="apiKeyOpen" type="button">🔑 API Key</button>
-          <button class="icon-button" id="agentClose" type="button" aria-label="Cerrar agente">×</button>
-        </div>
+        <div><strong>Agente Col360 IA</strong><small id="agentStatus">Conectando con el servidor local…</small></div>
+        <button class="icon-button" id="agentClose" type="button" aria-label="Cerrar agente">×</button>
       </div>
       <div class="agent-log" id="agentLog" role="log" aria-live="polite">
-        <div class="chat-message">¡Hola! Puedo responder preguntas y ayudarte a preparar una cita o trámite con Gemini. Configura tu API Key para comenzar.</div>
+        <div class="chat-message">¡Hola! Puedo responder preguntas y ayudarte a preparar una cita o trámite. Revisa los datos y confirma antes de enviar.</div>
       </div>
       <div class="quick-orders" aria-label="Órdenes rápidas">
         <button type="button" data-prompt="Agéndame una cita médica general mañana a las 9 am">Cita médica</button>
         <button type="button" data-prompt="Quiero sacar cita en la Registraduría para cédula">Cita Registraduría</button>
         <button type="button" data-prompt="Necesito certificado de impuestos">Certificado DIAN</button>
       </div>
-      <div class="agent-notice">Tus mensajes se envían a Google Gemini. No incluyas datos personales sensibles. La vista previa no envía trámites a entidades.</div>
+      <div class="agent-notice">Tus mensajes y contexto se envían a Groq desde tu servidor. Los datos se diligencian en el portal externo y el formulario se envía solo al pulsar “Aceptar y enviar”.</div>
       <form class="agent-form" id="agentForm">
         <input id="agentInput" aria-label="Escribe una solicitud" placeholder="Escribe lo que necesitas..." autocomplete="off" />
         <button type="submit" aria-label="Enviar solicitud">➤</button>
@@ -733,74 +707,10 @@
     </div>
     <div class="toast" id="codeToast" role="status" aria-live="polite" hidden></div>
 
-    <div class="login-overlay" id="apiKeyOverlay" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle" hidden>
-      <section class="api-key-card">
-        <h2 id="apiKeyTitle">Conectar con Gemini</h2>
-        <p>Usa tu propia clave de Google AI Studio. Se guarda en este navegador y se envía directamente a Google. Al ser una integración frontal, quien use este navegador podría acceder a la clave; restríngela por API y dominio en Google Cloud. No la uses en equipos compartidos. Las cuotas y cargos dependen de Google.</p>
-        <p><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Obtener una API Key en Google AI Studio ↗</a></p>
-        <label class="field-label" for="geminiApiKey">API Key de Gemini</label>
-        <input class="form-control" id="geminiApiKey" type="password" autocomplete="off" placeholder="Pega aquí tu API Key" />
-        <p class="key-status" id="keyStatus" role="status"></p>
-        <p class="login-error" id="keyError" role="alert"></p>
-        <div class="api-key-actions">
-          <button class="button danger small" id="apiKeyClear" type="button">Eliminar clave</button>
-          <div style="display: flex; gap: 8px">
-            <button class="button secondary small" id="apiKeyClose" type="button">Cerrar</button>
-            <button class="button small" id="apiKeySave" type="button">Guardar y conectar</button>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <div class="login-overlay" id="actionOverlay" role="dialog" aria-modal="true" aria-labelledby="actionTitle" hidden>
-      <section class="action-card">
-        <div class="action-head">
-          <div>
-            <h2 id="actionTitle">Agente en Acción - Previsualización de Radicado</h2>
-            <p>Revisa y edita los datos antes de aprobar. <a id="previewPortal" href="https://www.gov.co" target="_blank" rel="noopener noreferrer">Ver portal oficial ↗</a></p>
-          </div>
-          <button class="close-login" id="actionClose" type="button" aria-label="Cerrar previsualización">×</button>
-        </div>
-        <ol class="action-steps" id="actionSteps">
-          <li data-step="0"><span>1</span>Autenticando usuario único Col360</li>
-          <li data-step="1"><span>2</span>Conectando con entidad (simulación local)</li>
-          <li data-step="2"><span>3</span>Diligenciando campos</li>
-          <li data-step="3"><span>4</span>PAUSADO: Esperando aprobación del usuario antes de enviar</li>
-        </ol>
-        <p class="action-status" id="actionStatus" role="status">Preparando previsualización…</p>
-        <div class="action-fields">
-          <label class="field-label" for="previewEntity">Entidad
-            <input class="form-control" id="previewEntity" required />
-          </label>
-          <label class="field-label" for="previewType">Tipo de trámite
-            <input class="form-control" id="previewType" required />
-          </label>
-          <label class="field-label" for="previewCity">Ciudad
-            <input class="form-control" id="previewCity" required />
-          </label>
-          <label class="field-label" for="previewDate">Fecha
-            <input class="form-control" id="previewDate" required />
-          </label>
-          <label class="field-label" for="previewTime">Hora
-            <input class="form-control" id="previewTime" required />
-          </label>
-          <label class="field-label wide" for="previewObservations">Observaciones
-            <textarea class="form-control" id="previewObservations"></textarea>
-          </label>
-        </div>
-        <p class="action-disclaimer">Modo de prueba: esta página no se conecta ni envía datos a los portales de las entidades. Al confirmar, solo se guardará un radicado demostrativo en “Mis citas y trámites agendados”.</p>
-        <div class="action-buttons">
-          <button class="button secondary" id="actionStop" type="button">Detener / Editar</button>
-          <button class="button" id="actionConfirm" type="button" disabled>Confirmar y enviar definitivamente</button>
-        </div>
-      </section>
-    </div>
-
     <script>
       "use strict";
-      const svgIcon = (color, shapes) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="2" y="2" width="44" height="44" rx="14" fill="#f1f5fc"/><g fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${shapes}</g></svg>`
-      )}`;
+      const svgIcon = (color, shapes) =>
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="2" y="2" width="44" height="44" rx="14" fill="#f1f5fc"/><g fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${shapes}</g></svg>`;
       const ICONS = {
         salud: svgIcon("#c43d50", '<path d="M24 39S8 29 8 18a9 9 0 0 1 16-6 9 9 0 0 1 16 6c0 11-16 21-16 21Z"/><path d="M24 17v14M17 24h14"/>'),
         transporte: svgIcon("#1760a8", '<rect x="9" y="7" width="30" height="31" rx="5"/><path d="M9 22h30M15 14h5m8 0h5M15 30h1m16 0h1M15 38v3m18-3v3"/>'),
@@ -909,23 +819,21 @@
       ];
       const newsTopics = ["Todos", "Ciudad", "Salud", "Economía", "Trámites"];
       const cities = ["Bogotá", "Medellín", "Cali", "Barranquilla", "Cartagena", "Bucaramanga", "Pereira", "Santa Marta", "Manizales", "Cúcuta"];
-      const GEMINI_KEY_STORAGE = "col360-gemini-api-key";
-      const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
+      const SERVER_URL_STORAGE = "col360-server-url";
+      const SERVER_TOKEN_STORAGE = "col360-server-token";
       const state = {
         user: null,
         otp: "",
         otpExpiresAt: 0,
         newsTopic: "Todos",
         manualCityChoice: false,
-        geminiKey: "",
-        geminiHistory: [],
-        pendingPrompt: "",
-        pendingPreview: null,
-        previewToken: 0,
-        previewPaused: false,
+        chatHistory: [],
+        pendingWebSubmission: null,
+        awaitingApproval: false,
         agentBusy: false,
-        agentAbortController: null,
       };
+      let serverUrl = "http://localhost:3000";
+      let serverToken = "";
 
       const $ = (selector, root) => (root || document).querySelector(selector);
       const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
@@ -1084,22 +992,20 @@
         closeLogin();
         showView();
         window.scrollTo({ top: 0, behavior: "smooth" });
-        if (state.pendingPreview) {
-          const pending = state.pendingPreview;
-          if (!pending.ciudad) pending.ciudad = state.user.city;
-          state.pendingPreview = null;
-          startActionPreview(pending);
-        }
       }
 
       function logout() {
-        if (state.agentAbortController) state.agentAbortController.abort();
+        if (state.pendingWebSubmission) {
+          serverRequest("/api/cancel").catch((error) => {
+            console.error("No se pudo cerrar el navegador al cerrar sesión.", error);
+          });
+        }
         state.user = null;
         state.otp = "";
         state.manualCityChoice = false;
-        state.geminiHistory = [];
-        state.pendingPrompt = "";
-        state.pendingPreview = null;
+        state.chatHistory = [];
+        state.pendingWebSubmission = null;
+        state.awaitingApproval = false;
         sessionStorage.removeItem("col360-session");
         sessionStorage.removeItem("col360-appointments");
         $("#userEmail").value = "";
@@ -1109,14 +1015,14 @@
         $("#serviceSearch").value = "";
         $("#agentPanel").hidden = true;
         $("#agentFab").setAttribute("aria-expanded", "false");
-        $("#agentLog").innerHTML = `<div class="chat-message">¡Hola! Puedo responder preguntas y ayudarte a preparar una cita o trámite con Gemini. Configura tu API Key para comenzar.</div>`;
+        $("#agentLog").innerHTML = `<div class="chat-message">¡Hola! Puedo responder preguntas y ayudarte a preparar una cita o trámite. Revisa los datos y confirma antes de enviar.</div>`;
         showView();
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
 
       function serviceCard(service) {
         return `<a class="service-card" href="${escapeHTML(service.url)}" target="_blank" rel="noopener noreferrer">
-          <img src="${escapeHTML(service.icon)}" alt="" loading="lazy" />
+          <span class="service-icon" aria-hidden="true">${service.icon}</span>
           <span><strong>${escapeHTML(service.name)}</strong><small>${escapeHTML(service.description)}</small></span>
           <span class="service-arrow" aria-hidden="true">›</span>
         </a>`;
@@ -1131,7 +1037,7 @@
         ];
         $("#landingServices").innerHTML = previews.map(([name, iconKey, detail, serviceKey]) =>
           `<a class="preview-card" href="${escapeHTML(services[serviceKey].url)}" target="_blank" rel="noopener noreferrer">
-            <img src="${escapeHTML(ICONS[iconKey])}" alt="" loading="lazy" />
+            <span class="service-icon" aria-hidden="true">${ICONS[iconKey]}</span>
             <strong>${escapeHTML(name)}</strong><span>${escapeHTML(detail)}</span>
           </a>`
         ).join("");
@@ -1215,65 +1121,89 @@
       }
 
       function syncModalState() {
-        const modalOpen = !$("#loginOverlay").hidden || !$("#apiKeyOverlay").hidden || !$("#actionOverlay").hidden;
+        const modalOpen = !$("#loginOverlay").hidden;
         document.body.classList.toggle("modal-open", modalOpen);
       }
 
-      function updateApiKeyStatus() {
-        const configured = Boolean(state.geminiKey);
-        $("#agentKeyStatus").textContent = configured ? "API Key configurada · se valida al enviar" : "Necesitas una API Key para comenzar";
-        $("#apiKeyOpen").setAttribute("aria-label", configured ? "Cambiar API Key" : "Configurar API Key");
-        $("#keyStatus").textContent = configured ? "Hay una clave guardada en este navegador." : "";
+      function normalizeServerUrl(value) {
+        const url = new URL(value.trim());
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+          throw new Error("Usa una URL http:// o https:// válida, sin credenciales.");
+        }
+        return url.toString().replace(/\/+$/, "");
       }
 
-      function openApiKeyDialog() {
-        $("#keyError").textContent = "";
-        $("#geminiApiKey").value = "";
-        $("#apiKeyOverlay").hidden = false;
-        syncModalState();
-        $("#geminiApiKey").focus();
+      function initializeServerConfig() {
+        const address = new URL(window.location.href);
+        const queryServer = address.searchParams.get("server");
+        try {
+          if (queryServer) {
+            serverUrl = normalizeServerUrl(queryServer);
+            localStorage.setItem(SERVER_URL_STORAGE, serverUrl);
+            address.searchParams.delete("server");
+            history.replaceState(null, "", `${address.pathname}${address.search}${address.hash}`);
+          } else {
+            serverUrl = normalizeServerUrl(localStorage.getItem(SERVER_URL_STORAGE) || serverUrl);
+          }
+          serverToken = sessionStorage.getItem(SERVER_TOKEN_STORAGE) || "";
+        } catch (error) {
+          console.error("No se pudo cargar la configuración del servidor Col360.", error);
+          $("#agentStatus").textContent = "Configura el servidor PC para comenzar";
+        }
+        $("#agentStatus").textContent = `Servidor PC: ${serverUrl}`;
       }
 
-      function closeApiKeyDialog() {
-        $("#apiKeyOverlay").hidden = true;
-        syncModalState();
-      }
-
-      function saveApiKey() {
-        const key = $("#geminiApiKey").value.trim();
-        if (!key || /[\r\n]/.test(key)) {
-          $("#keyError").textContent = "Pega una API Key válida de Google AI Studio.";
-          $("#geminiApiKey").focus();
+      function configureServer() {
+        const enteredUrl = window.prompt("URL del servidor PC o del túnel:", serverUrl);
+        if (enteredUrl === null) return;
+        let nextUrl;
+        try {
+          nextUrl = normalizeServerUrl(enteredUrl);
+        } catch (error) {
+          window.alert(error.message);
+          return;
+        }
+        const enteredToken = window.prompt("Token COL360_AGENT_TOKEN configurado en el servidor:");
+        if (enteredToken === null) return;
+        if (!enteredToken.trim()) {
+          window.alert("El token del servidor es obligatorio.");
           return;
         }
         try {
-          localStorage.setItem(GEMINI_KEY_STORAGE, key);
+          localStorage.setItem(SERVER_URL_STORAGE, nextUrl);
+          sessionStorage.setItem(SERVER_TOKEN_STORAGE, enteredToken.trim());
+          serverUrl = nextUrl;
+          serverToken = enteredToken.trim();
+          $("#agentStatus").textContent = `Servidor PC: ${serverUrl}`;
         } catch (error) {
-          $("#keyError").textContent = "El navegador no permitió guardar la clave. Revisa la configuración de almacenamiento.";
-          console.error("No se pudo guardar la API Key de Gemini.", error);
-          return;
-        }
-        state.geminiKey = key;
-        updateApiKeyStatus();
-        closeApiKeyDialog();
-        if (state.pendingPrompt) {
-          const prompt = state.pendingPrompt;
-          state.pendingPrompt = "";
-          sendAgentMessage(prompt, true);
+          console.error("No se pudo guardar la configuración del servidor Col360.", error);
+          window.alert("El navegador no permitió guardar la configuración del servidor.");
         }
       }
 
-      function clearApiKey() {
-        try {
-          localStorage.removeItem(GEMINI_KEY_STORAGE);
-        } catch (error) {
-          $("#keyError").textContent = "El navegador no permitió eliminar la clave.";
-          console.error("No se pudo eliminar la API Key de Gemini.", error);
-          return;
+      async function serverRequest(route, body) {
+        if (!serverToken) {
+          const enteredToken = window.prompt("Pega el token COL360_AGENT_TOKEN del servidor:");
+          if (enteredToken === null || !enteredToken.trim()) throw new Error("Se requiere el token de acceso del servidor.");
+          serverToken = enteredToken.trim();
+          sessionStorage.setItem(SERVER_TOKEN_STORAGE, serverToken);
         }
-        state.geminiKey = "";
-        updateApiKeyStatus();
-        $("#geminiApiKey").value = "";
+        const response = await fetch(`${serverUrl}${route}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${serverToken}`,
+          },
+          body: JSON.stringify(body || {}),
+        });
+        let payload;
+        try {
+          payload = await response.json();
+        } catch (error) {
+          throw new Error("El servidor PC devolvió una respuesta que no se pudo leer.");
+        }
+        if (!response.ok) throw new Error(payload && payload.error ? payload.error : `El servidor respondió con estado ${response.status}.`);
+        return payload;
       }
 
       function appendMessage(text, sender, isError) {
@@ -1285,266 +1215,182 @@
         $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
       }
 
-      function systemInstruction() {
-        const city = state.user ? state.user.city : "no conocida; pregúntala si hace falta";
-        return `Eres el asistente de IA de Col360 para Colombia. Responde en español claro y amable sobre servicios públicos y trámites; no afirmes representar al Gobierno ni a las entidades. No inventes requisitos, fechas, costos ni disponibilidad; si no estás seguro, dilo y recomienda verificar en el portal oficial. No digas que una cita quedó agendada ni que un trámite fue enviado o aprobado: Col360 solo prepara una vista previa local. No solicites números de documento, contraseñas ni datos sensibles.
-
-La ciudad seleccionada en Col360 es: ${city}. Úsala como ciudad si el usuario no indicó otra.
-
-Devuelve exclusivamente un objeto JSON con esta forma exacta:
-{"respuesta":"texto conversacional","agendamiento":{"solicitud":false,"listo_para_previsualizar":false,"requiere_cita":false,"entidad":"","tipo_tramite":"","ciudad":"","fecha":"","hora":"","observaciones":""}}
-
-Si el usuario solicita claramente agendar una cita o iniciar un trámite, establece solicitud=true y extrae entidad, tipo_tramite, ciudad, fecha, hora y observaciones. Para una cita, si falta ciudad, fecha o hora, deja ese campo vacío, listo_para_previsualizar=false y pregunta por el dato faltante en respuesta. Para un trámite que no requiere cita, usa "No aplica" en fecha u hora que no correspondan. Establece listo_para_previsualizar=true solo cuando entidad, tipo_tramite, ciudad, fecha y hora estén completos; usa "Sin observaciones" si no hay ninguna. Si solo pregunta información y no solicita acción, solicitud=false y deja los campos vacíos.`;
-      }
-
-      function normalizeGeminiResult(value) {
-        if (!value || typeof value.respuesta !== "string" || !value.agendamiento || typeof value.agendamiento !== "object") {
-          throw new Error("Gemini devolvió una respuesta con una estructura inesperada.");
-        }
-        const source = value.agendamiento;
-        const textField = (field) => typeof source[field] === "string" ? source[field].trim() : "";
-        return {
-          respuesta: value.respuesta.trim(),
-          agendamiento: {
-            solicitud: source.solicitud === true,
-            listo: source.listo_para_previsualizar === true,
-            requiereCita: source.requiere_cita === true,
-            entidad: textField("entidad"),
-            tipo: textField("tipo_tramite"),
-            ciudad: textField("ciudad"),
-            fecha: textField("fecha"),
-            hora: textField("hora"),
-            observaciones: textField("observaciones"),
-          },
-        };
-      }
-
       function setAgentBusy(busy) {
         state.agentBusy = busy;
-        $("#agentInput").disabled = busy;
-        $("#agentForm button[type='submit']").disabled = busy;
-        $$(".quick-orders button").forEach((button) => { button.disabled = busy; });
+        const disabled = busy || state.awaitingApproval;
+        $("#agentInput").disabled = disabled;
+        $("#agentForm button[type='submit']").disabled = disabled;
+        $$(".quick-orders button").forEach((button) => { button.disabled = disabled; });
         $("#agentForm button[type='submit']").textContent = busy ? "…" : "➤";
       }
 
       async function sendAgentMessage(text, alreadyDisplayed) {
         const prompt = text.trim();
-        if (!prompt || state.agentBusy) return;
+        if (!prompt || state.agentBusy || state.awaitingApproval) return;
         if (!alreadyDisplayed) appendMessage(prompt, "user");
-        if (!state.geminiKey) {
-          state.pendingPrompt = prompt;
-          appendMessage("Para activar el agente, pega tu API Key de Google AI Studio en el botón “🔑 API Key”.", "agent");
-          openApiKeyDialog();
-          return;
-        }
-
-        const conversation = state.geminiHistory.length >= 20
-          ? state.geminiHistory.slice(-18)
-          : state.geminiHistory.slice();
-        conversation.push({ role: "user", parts: [{ text: prompt }] });
-        const controller = new AbortController();
-        state.agentAbortController = controller;
         setAgentBusy(true);
         try {
-          const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(state.geminiKey)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: controller.signal,
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemInstruction() }] },
-              contents: conversation,
-              generationConfig: {
-                temperature: 0.2,
-                responseMimeType: "application/json",
-                responseSchema: {
-                  type: "OBJECT",
-                  properties: {
-                    respuesta: { type: "STRING" },
-                    agendamiento: {
-                      type: "OBJECT",
-                      properties: {
-                        solicitud: { type: "BOOLEAN" },
-                        listo_para_previsualizar: { type: "BOOLEAN" },
-                        requiere_cita: { type: "BOOLEAN" },
-                        entidad: { type: "STRING" },
-                        tipo_tramite: { type: "STRING" },
-                        ciudad: { type: "STRING" },
-                        fecha: { type: "STRING" },
-                        hora: { type: "STRING" },
-                        observaciones: { type: "STRING" },
-                      },
-                      required: ["solicitud", "listo_para_previsualizar", "requiere_cita", "entidad", "tipo_tramite", "ciudad", "fecha", "hora", "observaciones"],
-                    },
-                  },
-                  required: ["respuesta", "agendamiento"],
-                },
-              },
-            }),
+          const context = state.user
+            ? { email: state.user.email, city: state.user.city, name: state.user.name || "" }
+            : { email: "", city: "", name: "" };
+          const result = await serverRequest("/api/chat", {
+            message: prompt,
+            userContext: context,
+            history: state.chatHistory,
           });
-          let payload;
-          try {
-            payload = await response.json();
-          } catch (error) {
-            throw new Error("Google devolvió una respuesta que no se pudo leer.");
+          state.chatHistory.push({ role: "user", content: prompt });
+          if (result.type === "preview") {
+            if (!result.datos || typeof result.screenshot !== "string") {
+              throw new Error("El servidor no devolvió la captura y los datos de la previsualización.");
+            }
+            state.chatHistory.push({ role: "assistant", content: result.reply });
+            appendMessage(result.reply, "agent");
+            const card = appendWebPreview(result.datos, result.screenshot);
+            state.pendingWebSubmission = { datos: result.datos, card };
+            state.awaitingApproval = true;
+          } else if (result.type === "text" && typeof result.reply === "string") {
+            state.chatHistory.push({ role: "assistant", content: result.reply });
+            appendMessage(result.reply, "agent");
+          } else {
+            throw new Error("El servidor devolvió un tipo de respuesta inesperado.");
           }
-          if (!response.ok) {
-            const detail = payload && payload.error && payload.error.message;
-            throw new Error(detail || `La API de Gemini respondió con el estado ${response.status}.`);
-          }
-          const candidate = payload && payload.candidates && payload.candidates[0];
-          const parts = candidate && candidate.content && candidate.content.parts;
-          const responseText = Array.isArray(parts)
-            ? parts.map((part) => typeof part.text === "string" ? part.text : "").join("").trim()
-            : "";
-          if (!responseText) throw new Error("Gemini no devolvió contenido. Comprueba la clave y la cuota del modelo.");
-          let decoded;
-          try {
-            decoded = JSON.parse(responseText.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, ""));
-          } catch (error) {
-            throw new Error("Gemini no devolvió el JSON estructurado esperado. Inténtalo de nuevo.");
-          }
-          const result = normalizeGeminiResult(decoded);
-          state.geminiHistory = conversation.concat([{ role: "model", parts: [{ text: responseText }] }]);
-          appendMessage(result.respuesta || "He revisado tu consulta.", "agent");
-          prepareActionPreview(result.agendamiento);
         } catch (error) {
-          if (error.name !== "AbortError") {
-            console.error("Error al consultar la API de Gemini.", error);
-            appendMessage(`No pudimos obtener respuesta de Gemini: ${error.message}`, "agent", true);
-          }
+          console.error("Error al consultar el servidor Col360.", error);
+          appendMessage(`No pudimos completar la solicitud: ${error.message}`, "agent", true);
         } finally {
-          if (state.agentAbortController === controller) state.agentAbortController = null;
           setAgentBusy(false);
-          $("#agentInput").focus();
+          if (!state.awaitingApproval) $("#agentInput").focus();
         }
       }
 
-      function prepareActionPreview(request) {
-        if (!request.solicitud) return;
-        if (!request.ciudad && state.user) request.ciudad = state.user.city;
-        const complete = request.entidad && request.tipo && request.ciudad && request.fecha && request.hora;
-        if (!request.listo || !complete) return;
-        state.pendingPreview = request;
-        if (!state.user) {
-          appendMessage("La solicitud está lista. Inicia sesión para personalizar tu ciudad y abrir la previsualización antes de confirmar.", "agent");
-          openLogin();
-          return;
-        }
-        state.pendingPreview = null;
-        startActionPreview(request);
-      }
+      function appendWebPreview(datos, screenshot) {
+        const card = document.createElement("section");
+        card.className = "web-preview-card";
+        const image = document.createElement("img");
+        image.src = `data:image/png;base64,${screenshot}`;
+        image.alt = "Captura real del formulario en Chrome, pausado antes del envío";
+        card.append(image);
 
-      function officialPortalFor(entity) {
-        const name = entity.toLocaleLowerCase("es");
-        if (name.includes("registradur")) return services.registraduria.url;
-        if (name.includes("salud") || name.includes("eps")) return services.salud.url;
-        if (name.includes("dian") || name.includes("tribut")) return services.ingresos.url;
-        return services.certificados.url;
-      }
-
-      function updateActionSteps(activeStep, paused) {
-        $$("#actionSteps li").forEach((step) => {
-          const index = Number(step.dataset.step);
-          step.classList.toggle("complete", index < activeStep || (paused && index < 3));
-          step.classList.toggle("active", index === activeStep && !paused);
-          step.classList.toggle("paused", index === 3 && paused);
-        });
-      }
-
-      async function animateActionPreview(token) {
-        const labels = [
-          "Autenticando usuario único Col360…",
-          "Preparando conexión con la entidad (simulación local)…",
-          "Diligenciando los campos de la previsualización…",
-          "PAUSADO: Esperando aprobación del usuario antes de enviar.",
+        const heading = document.createElement("h3");
+        heading.textContent = "Revisa los datos antes de enviar";
+        card.append(heading);
+        const summary = document.createElement("div");
+        summary.className = "web-preview-data";
+        const fields = [
+          ["Nombre", datos.nombre_completo],
+          ["Documento", datos.documento],
+          ["Correo", datos.correo],
+          ["Ciudad", datos.ciudad],
+          ["Entidad", datos.entidad],
+          ["Servicio", datos.servicio],
+          ["Fecha", datos.fecha],
+          ["Hora", datos.hora],
+          ["Observaciones", datos.observaciones || "Sin observaciones"],
         ];
-        for (let step = 0; step < 4; step += 1) {
-          if (token !== state.previewToken) return;
-          updateActionSteps(step, false);
-          $("#actionStatus").textContent = labels[step];
-          await new Promise((resolve) => window.setTimeout(resolve, 650));
+        fields.forEach(([label, value]) => {
+          const line = document.createElement("div");
+          const strong = document.createElement("strong");
+          strong.textContent = `${label}: `;
+          line.append(strong, document.createTextNode(value || ""));
+          summary.append(line);
+        });
+        card.append(summary);
+
+        const actions = document.createElement("div");
+        actions.className = "web-preview-actions";
+        actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
+        card.append(actions);
+        $("#agentLog").append(card);
+        $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
+        return card;
+      }
+
+      function finishWebPreview() {
+        state.pendingWebSubmission = null;
+        state.awaitingApproval = false;
+        setAgentBusy(false);
+        $("#agentInput").focus();
+      }
+
+      async function confirmWebPreview(card) {
+        const pending = state.pendingWebSubmission;
+        if (!pending) return;
+        const buttons = $$("[data-preview-action]", card);
+        buttons.forEach((button) => { button.disabled = true; });
+        let status = card.querySelector(".web-preview-final");
+        if (!status) {
+          status = document.createElement("p");
+          status.className = "web-preview-final";
+          card.append(status);
         }
-        if (token !== state.previewToken) return;
-        state.previewPaused = true;
-        updateActionSteps(3, true);
-        $("#actionStatus").textContent = labels[3];
-        $("#actionConfirm").disabled = false;
-      }
-
-      function startActionPreview(request) {
-        $("#previewEntity").value = request.entidad;
-        $("#previewType").value = request.tipo;
-        $("#previewCity").value = request.ciudad;
-        $("#previewDate").value = request.fecha;
-        $("#previewTime").value = request.hora;
-        $("#previewObservations").value = request.observaciones || "Sin observaciones";
-        $("#previewPortal").href = officialPortalFor(request.entidad);
-        $("#actionOverlay").hidden = false;
-        syncModalState();
-        state.previewPaused = false;
-        $("#actionConfirm").disabled = true;
-        const token = ++state.previewToken;
-        animateActionPreview(token);
-      }
-
-      function stopActionPreview() {
-        state.previewToken += 1;
-        state.previewPaused = true;
-        updateActionSteps(3, true);
-        $("#actionStatus").textContent = "Proceso detenido. Edita los campos; el envío sigue pausado hasta que confirmes.";
-        $("#actionConfirm").disabled = false;
-        $("#previewEntity").focus();
-      }
-
-      function closeActionPreview() {
-        state.previewToken += 1;
-        state.previewPaused = false;
-        state.pendingPreview = null;
-        $("#actionOverlay").hidden = true;
-        syncModalState();
-      }
-
-      function confirmActionPreview() {
-        if (!state.previewPaused) return;
-        const item = {
-          entity: $("#previewEntity").value.trim(),
-          kind: $("#previewType").value.trim(),
-          city: $("#previewCity").value.trim(),
-          date: $("#previewDate").value.trim(),
-          time: $("#previewTime").value.trim(),
-          observations: $("#previewObservations").value.trim() || "Sin observaciones",
-        };
-        if (!item.entity || !item.kind || !item.city || !item.date || !item.time) {
-          $("#actionStatus").textContent = "Completa entidad, trámite, ciudad, fecha y hora antes de confirmar.";
-          return;
-        }
-        if (!state.user) {
-          state.pendingPreview = {
-            entidad: item.entity,
-            tipo: item.kind,
-            ciudad: item.city,
-            fecha: item.date,
-            hora: item.time,
-            observaciones: item.observations,
+        status.textContent = "Enviando el formulario al portal externo…";
+        try {
+          const result = await serverRequest("/api/confirm");
+          if (!result.ok || typeof result.screenshot !== "string" || typeof result.radicado !== "string") {
+            throw new Error("El servidor no devolvió la confirmación, la captura y la referencia del trámite.");
+          }
+          const image = card.querySelector("img");
+          image.src = `data:image/png;base64,${result.screenshot}`;
+          image.alt = "Captura final del formulario después de confirmarlo";
+          const datos = pending.datos;
+          const item = {
+            id: result.radicado,
+            entity: datos.entidad,
+            kind: datos.servicio,
+            city: datos.ciudad,
+            date: datos.fecha,
+            time: datos.hora,
+            observations: datos.observaciones || "Sin observaciones",
+            status: "Enviado · referencia Col360",
+            createdAt: new Date().toISOString(),
           };
-          state.previewToken += 1;
-          $("#actionOverlay").hidden = true;
-          syncModalState();
-          openLogin();
-          appendMessage("Inicia sesión para guardar el radicado de prueba en tu tablero.", "agent");
-          return;
+          try {
+            const appointments = readAppointments();
+            appointments.unshift(item);
+            saveAppointments(appointments);
+            if (state.user) renderAppointments();
+          } catch (error) {
+            console.error("No se pudo guardar la cita en este navegador.", error);
+            const reply = "El formulario se envió, pero no se pudo guardar en Mis Citas. Copia esta referencia: " + result.radicado;
+            status.textContent = reply;
+            state.chatHistory.push({ role: "assistant", content: reply });
+            finishWebPreview();
+            return;
+          }
+          const reply = `Formulario enviado. Referencia local Col360: ${result.radicado}. Si el portal emitió un radicado oficial, consúltalo en la captura.`;
+          status.textContent = `Envío completado. Referencia local Col360: ${result.radicado}. No es un radicado oficial de la entidad.`;
+          state.chatHistory.push({ role: "assistant", content: reply });
+          appendMessage(reply, "agent");
+          finishWebPreview();
+        } catch (error) {
+          console.error("No se pudo confirmar el formulario web.", error);
+          const reply = `No se pudo confirmar: ${error.message}. Por seguridad, verifica el portal antes de volver a intentarlo.`;
+          status.textContent = reply;
+          state.chatHistory.push({ role: "assistant", content: reply });
+          finishWebPreview();
         }
-        const random = new Uint32Array(1);
-        window.crypto.getRandomValues(random);
-        item.id = `COL360-${String(1000 + random[0] % 9000)}`;
-        item.status = "Confirmado · demo local";
-        item.createdAt = new Date().toISOString();
-        const appointments = readAppointments();
-        appointments.unshift(item);
-        saveAppointments(appointments);
-        renderAppointments();
-        closeActionPreview();
-        appendMessage(`Radicado demostrativo ${item.id} guardado en “Mis citas y trámites agendados”. No se envió a ${item.entity}; visita el portal oficial para completar el trámite.`, "agent");
+      }
+
+      async function cancelWebPreview(card) {
+        const pending = state.pendingWebSubmission;
+        if (!pending) return;
+        const buttons = $$("[data-preview-action]", card);
+        buttons.forEach((button) => { button.disabled = true; });
+        try {
+          await serverRequest("/api/cancel");
+          const status = document.createElement("p");
+          status.className = "web-preview-final";
+          status.textContent = "Previsualización cancelada. El formulario no se envió.";
+          card.append(status);
+          const reply = "Solicitud cancelada; no se envió el formulario.";
+          state.chatHistory.push({ role: "assistant", content: reply });
+          appendMessage(reply, "agent");
+          finishWebPreview();
+        } catch (error) {
+          console.error("No se pudo cancelar la previsualización.", error);
+          appendMessage(`No pudimos cancelar la sesión de Chrome: ${error.message}`, "agent", true);
+          buttons.forEach((button) => { button.disabled = false; });
+        }
       }
 
       function openAgent() {
@@ -1562,7 +1408,7 @@ Si el usuario solicita claramente agendar una cita o iniciar un trámite, establ
         const item = readAppointments().find((appointment) => appointment.id === id);
         if (!item) return;
         const summary = [
-          "Col360 | Resumen demostrativo de solicitud",
+          "Col360 | Resumen de solicitud",
           `Radicado: ${item.id}`,
           `Entidad: ${item.entity}`,
           `Tipo: ${item.kind}`,
@@ -1572,7 +1418,7 @@ Si el usuario solicita claramente agendar una cita o iniciar un trámite, establ
           `Observaciones: ${item.observations || "Sin observaciones"}`,
           `Estado: ${item.status}`,
           "",
-          "Este resumen no confirma una cita o trámite ante la entidad. Consulta su portal oficial."
+          "La referencia Col360 es local; consulta el portal de la entidad para verificar su radicado oficial."
         ].join("\n");
         const blob = new Blob([summary], { type: "text/plain;charset=utf-8" });
         const url = URL.createObjectURL(blob);
@@ -1601,24 +1447,17 @@ Si el usuario solicita claramente agendar una cita o iniciar un trámite, establ
       $("#loginOverlay").addEventListener("click", (event) => {
         if (event.target === $("#loginOverlay")) closeLogin();
       });
-      $("#apiKeyOpen").addEventListener("click", openApiKeyDialog);
-      $("#apiKeyClose").addEventListener("click", closeApiKeyDialog);
-      $("#apiKeySave").addEventListener("click", saveApiKey);
-      $("#apiKeyClear").addEventListener("click", clearApiKey);
-      $("#apiKeyOverlay").addEventListener("click", (event) => {
-        if (event.target === $("#apiKeyOverlay")) closeApiKeyDialog();
+      $("#serverButton").addEventListener("click", configureServer);
+      $("#agentLog").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-preview-action]");
+        if (!button || !state.pendingWebSubmission) return;
+        const card = button.closest(".web-preview-card");
+        if (button.dataset.previewAction === "confirm") confirmWebPreview(card);
+        if (button.dataset.previewAction === "cancel") cancelWebPreview(card);
       });
-      $("#actionClose").addEventListener("click", closeActionPreview);
-      $("#actionOverlay").addEventListener("click", (event) => {
-        if (event.target === $("#actionOverlay")) closeActionPreview();
-      });
-      $("#actionStop").addEventListener("click", stopActionPreview);
-      $("#actionConfirm").addEventListener("click", confirmActionPreview);
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
           closeLogin();
-          closeApiKeyDialog();
-          closeActionPreview();
           closeAgent();
         }
       });
@@ -1675,12 +1514,7 @@ Si el usuario solicita claramente agendar una cita o iniciar un trámite, establ
 
       renderLandingServices();
       renderNews();
-      try {
-        state.geminiKey = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
-      } catch (error) {
-        console.error("No se pudo leer la API Key guardada de Gemini.", error);
-      }
-      updateApiKeyStatus();
+      initializeServerConfig();
       try {
         const savedSession = JSON.parse(sessionStorage.getItem("col360-session") || "null");
         if (savedSession && typeof savedSession.email === "string" && typeof savedSession.city === "string") state.user = savedSession;
