@@ -1326,7 +1326,7 @@
 
       function setAgentBusy(busy) {
         state.agentBusy = busy;
-        const captchaPending = waitingForCaptcha && Boolean($("#captcha-input"));
+        const captchaPending = waitingForCaptcha && Boolean($(".captcha-input"));
         const disabled = busy || (state.awaitingApproval && !captchaPending) || !serverOnline;
         const quickOrdersDisabled = busy || state.awaitingApproval || !serverOnline;
         $("#agentInput").disabled = disabled;
@@ -1344,7 +1344,7 @@
         if (!prompt || state.agentBusy) return;
         if (waitingForCaptcha) {
           const card = state.pendingWebSubmission && state.pendingWebSubmission.card;
-          const captchaInput = card && $("#captcha-input", card);
+          const captchaInput = card && $(".captcha-input", card);
           if (!captchaInput) return;
           if (prompt.length > 12) {
             appendMessage("Escribe únicamente el código de la imagen (máximo 12 caracteres).", "agent", true);
@@ -1404,42 +1404,41 @@
       }
 
       function appendWebPreview(data, screenshot) {
-        const datos = data.datos;
         const card = document.createElement("section");
         card.className = "web-preview-card";
+        renderWebPreviewCard(card, { ...data, screenshot });
+        $("#agentLog").append(card);
+        $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
+        return card;
+      }
+
+      function renderWebPreviewCard(card, data) {
+        card.replaceChildren();
+        card.dataset.step = data.step || "";
         const image = document.createElement("img");
-        image.src = `data:image/jpeg;base64,${screenshot}`;
-        image.alt = "Captura del portal oficial en Chrome, pausado antes de enviar";
+        image.src = `data:image/jpeg;base64,${data.screenshot}`;
+        image.alt = data.step === "done"
+          ? "Captura del resultado del portal oficial"
+          : "Captura del portal oficial en Chrome";
         card.append(image);
 
-        const needsCaptcha = data.requiresCaptcha === true
-          || (data.datos && data.datos.url_portal && data.datos.url_portal.includes("adres.gov.co"));
-        if (needsCaptcha) {
-          waitingForCaptcha = true;
-          const captchaLabel = document.createElement("label");
-          captchaLabel.className = "web-preview-captcha";
-          captchaLabel.htmlFor = "captcha-input";
-          captchaLabel.append(document.createTextNode("Escribe el código que ves en la imagen:"));
-          const captchaInput = document.createElement("input");
-          captchaInput.id = "captcha-input";
-          captchaInput.type = "text";
-          captchaInput.placeholder = "Escribe el código aquí...";
-          captchaInput.autocomplete = "off";
-          captchaLabel.append(captchaInput);
-          card.append(captchaLabel);
-          const sendCaptchaButton = document.createElement("button");
-          sendCaptchaButton.id = "send-captcha-btn";
-          sendCaptchaButton.className = "button";
-          sendCaptchaButton.type = "button";
-          sendCaptchaButton.textContent = "Enviar código";
-          card.append(sendCaptchaButton);
-        } else {
+        if (data.step === "done" || data.ok === true) {
+          const heading = document.createElement("h3");
+          heading.textContent = "Consulta completada";
+          card.append(heading);
+          const radicado = document.createElement("p");
+          radicado.className = "web-preview-final";
+          radicado.textContent = `Referencia local Col360: ${data.radicado || ""}. Verifica el resultado directamente en el portal oficial.`;
+          card.append(radicado);
           waitingForCaptcha = false;
+          return;
         }
 
         const heading = document.createElement("h3");
         heading.textContent = "Verifica los datos en el portal oficial";
         card.append(heading);
+
+        const datos = data.datos || {};
         const summary = document.createElement("div");
         summary.className = "web-preview-data";
         const fields = [
@@ -1457,26 +1456,63 @@
         });
         card.append(summary);
 
+        if (data.step === "enter_captcha") {
+          waitingForCaptcha = true;
+          const captchaLabel = document.createElement("label");
+          captchaLabel.className = "web-preview-captcha";
+          captchaLabel.htmlFor = "captcha-code";
+          captchaLabel.append(document.createTextNode("Escribe el código de la imagen:"));
+          const captchaInput = document.createElement("input");
+          captchaInput.className = "captcha-input";
+          captchaInput.id = "captcha-code";
+          captchaInput.type = "text";
+          captchaInput.placeholder = "Escribe el código aquí...";
+          captchaInput.autocomplete = "off";
+          captchaLabel.append(captchaInput);
+          card.append(captchaLabel);
+          const sendCaptchaButton = document.createElement("button");
+          sendCaptchaButton.className = "button send-captcha-btn";
+          sendCaptchaButton.type = "button";
+          sendCaptchaButton.textContent = "Enviar código";
+          card.append(sendCaptchaButton);
+        } else if (data.step === "confirm_submit") {
+          waitingForCaptcha = false;
+          const captchaLabel = document.createElement("label");
+          captchaLabel.className = "web-preview-captcha";
+          captchaLabel.htmlFor = "captcha-correction";
+          captchaLabel.append(document.createTextNode("¿Corregir código? Escríbelo aquí..."));
+          const captchaInput = document.createElement("input");
+          captchaInput.className = "captcha-input";
+          captchaInput.id = "captcha-correction";
+          captchaInput.type = "text";
+          captchaInput.placeholder = "¿Corregir código? Escríbelo aquí...";
+          captchaInput.autocomplete = "off";
+          captchaLabel.append(captchaInput);
+          card.append(captchaLabel);
+          appendPreviewActions(card);
+        } else {
+          waitingForCaptcha = false;
+          appendPreviewActions(card);
+        }
+
+      }
+
+      function appendPreviewActions(card) {
         const actions = document.createElement("div");
         actions.className = "web-preview-actions";
-        if (!needsCaptcha) {
-          actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
-          card.append(actions);
-        }
-        $("#agentLog").append(card);
-        $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
-        return card;
+        actions.innerHTML = '<button class="button confirm-btn" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger cancel-btn" type="button" data-preview-action="cancel">❌ Cancelar</button>';
+        card.append(actions);
       }
 
       async function sendCaptchaCode(code, card) {
         const captcha = String(code || "").trim();
         if (!captcha) {
           window.alert("Escribe el código de la imagen primero");
-          $("#captcha-input", card).focus();
+          $(".captcha-input", card).focus();
           return;
         }
         if (!waitingForCaptcha || state.agentBusy) return;
-        const sendButton = $("#send-captcha-btn", card);
+        const sendButton = $(".send-captcha-btn", card);
         if (sendButton) {
           sendButton.disabled = true;
           sendButton.textContent = "Enviando...";
@@ -1484,18 +1520,11 @@
         setAgentBusy(true);
         try {
           const result = await serverRequest("/api/captcha", { captcha });
-          if (result.type !== "preview" || result.requiresCaptcha !== false || typeof result.screenshot !== "string") {
+          if (result.type !== "preview" || result.step !== "confirm_submit" || typeof result.screenshot !== "string") {
             throw new Error("El servidor no devolvió la nueva captura del portal.");
           }
-          const image = card.querySelector("img");
-          image.src = `data:image/jpeg;base64,${result.screenshot}`;
-          image.alt = "Captura actualizada del portal oficial con el código ingresado";
-          if (sendButton) sendButton.remove();
-          const actions = document.createElement("div");
-          actions.className = "web-preview-actions";
-          actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
-          card.append(actions);
-          waitingForCaptcha = false;
+          renderWebPreviewCard(card, result);
+          state.pendingWebSubmission = { datos: result.datos, card };
           state.chatHistory.push({ role: "assistant", content: result.reply });
           appendMessage(result.reply, "agent");
         } catch (error) {
@@ -1519,50 +1548,11 @@
         $("#agentInput").focus();
       }
 
-      function renderCaptchaRetry(card, data) {
-        card.replaceChildren();
-        const image = document.createElement("img");
-        image.src = `data:image/jpeg;base64,${data.screenshot}`;
-        image.alt = "Captura actualizada del portal ADRES con un nuevo código de seguridad";
-        card.append(image);
-
-        const heading = document.createElement("h3");
-        heading.textContent = "El código CAPTCHA no fue aceptado";
-        card.append(heading);
-        const captchaLabel = document.createElement("label");
-        captchaLabel.className = "web-preview-captcha";
-        captchaLabel.htmlFor = "captcha-input";
-        captchaLabel.append(document.createTextNode("Escribe el nuevo código que ves en la imagen:"));
-        const captchaInput = document.createElement("input");
-        captchaInput.id = "captcha-input";
-        captchaInput.type = "text";
-        captchaInput.placeholder = "Escribe el código aquí...";
-        captchaInput.autocomplete = "off";
-        captchaLabel.append(captchaInput);
-        card.append(captchaLabel);
-
-        const actions = document.createElement("div");
-        actions.className = "web-preview-actions";
-        actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
-        card.append(actions);
-        const datos = data.datos || (state.pendingWebSubmission && state.pendingWebSubmission.datos);
-        state.pendingWebSubmission = { datos, card };
-        waitingForCaptcha = false;
-        state.awaitingApproval = true;
-        setAgentBusy(false);
-        $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
-      }
-
       async function confirmWebPreview(card, confirmButton) {
         const pending = state.pendingWebSubmission;
         if (!pending) return;
-        const captchaInput = card.querySelector('input[type="text"]');
+        const captchaInput = card.querySelector('input[type="text"].captcha-input');
         const captchaValue = captchaInput ? captchaInput.value.trim() : "";
-        if (captchaInput && !captchaValue) {
-          window.alert("Escribe el código de la imagen primero");
-          captchaInput.focus();
-          return;
-        }
         if (waitingForCaptcha) return;
         setAgentBusy(true);
         const buttons = $$("[data-preview-action]", card);
@@ -1576,18 +1566,33 @@
         }
         status.textContent = "Enviando la consulta y esperando la respuesta del portal…";
         try {
-          const result = await serverRequest("/api/confirm", captchaInput
+          const confirmBody = captchaValue
             ? { captcha: captchaValue, code: captchaValue }
-            : {});
-          if (result.retryCaptcha === true || (result.requiresCaptcha === true && !result.ok)) {
+            : {};
+          const result = await serverRequest("/api/confirm", confirmBody);
+          if (result.step === "enter_captcha" && result.type === "preview") {
             if (typeof result.screenshot !== "string") {
               throw new Error("El servidor no devolvió la nueva captura del CAPTCHA.");
             }
-            renderCaptchaRetry(card, result);
+            renderWebPreviewCard(card, result);
+            state.pendingWebSubmission = { datos: result.datos || pending.datos, card };
+            state.awaitingApproval = true;
+            setAgentBusy(false);
             if (typeof result.reply === "string") {
               state.chatHistory.push({ role: "assistant", content: result.reply });
               appendMessage(result.reply, "agent");
             }
+            return;
+          }
+          if (result.step === "done" || result.ok === true) {
+            if (typeof result.screenshot !== "string" || typeof result.radicado !== "string") {
+              throw new Error("El servidor no devolvió la captura final y el radicado.");
+            }
+            renderWebPreviewCard(card, result);
+            const reply = `Consulta enviada al portal. Referencia local Col360: ${result.radicado}. No es un radicado oficial; verifica el resultado directamente en la página de ${pending.datos.entidad}.`;
+            state.chatHistory.push({ role: "assistant", content: reply });
+            appendMessage(reply, "agent");
+            finishWebPreview();
             return;
           }
           if (typeof result.screenshot === "string") {
@@ -1692,12 +1697,12 @@
       $("#serverStatus").addEventListener("dblclick", configureServer);
       $("#activationForm").addEventListener("submit", sendActivationNotification);
       $("#agentLog").addEventListener("click", (event) => {
-       const sendCaptchaButton = event.target.closest("#send-captcha-btn");
-       if (sendCaptchaButton && state.pendingWebSubmission) {
-         const card = sendCaptchaButton.closest(".web-preview-card");
-         sendCaptchaCode($("#captcha-input", card).value, card);
-         return;
-       }
+        const sendCaptchaButton = event.target.closest(".send-captcha-btn");
+        if (sendCaptchaButton && state.pendingWebSubmission) {
+          const card = sendCaptchaButton.closest(".web-preview-card");
+          sendCaptchaCode($(".captcha-input", card).value, card);
+          return;
+        }
         const button = event.target.closest("[data-preview-action]");
         if (!button || !state.pendingWebSubmission) return;
         const card = button.closest(".web-preview-card");

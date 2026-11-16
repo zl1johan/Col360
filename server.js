@@ -186,6 +186,35 @@ async function fillFirstVisibleText(page, value, portalName) {
   }
 }
 
+async function fillAdresCaptcha(page, code) {
+  const captchaValue = String(code).trim();
+  const selector =
+    '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
+  const contexts = [page, ...page.frames().filter((frame) => frame !== page.mainFrame())];
+  let lastError;
+
+  for (const context of contexts) {
+    try {
+      let field = context.locator(selector).first();
+      if (await field.count() === 0) {
+        field = context.locator('input[type="text"]:visible').nth(1);
+      }
+      await field.waitFor({ state: "visible", timeout: 1200 });
+      await field.click({ timeout: 1200 });
+      await field.fill(captchaValue, { timeout: 1200 });
+      await field.evaluate((element) => {
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("No se encontró el campo CAPTCHA de ADRES.");
+}
+
 async function selectCedulaType(page, portalName) {
   try {
     const select = page.locator("select:visible").first();
@@ -440,21 +469,24 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
         );
       }
 
-      const screenshot = (await page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
       const isAdres = args.url_portal.includes("adres.gov.co");
+      const screenshot = (await page.screenshot({
+        type: "jpeg",
+        quality: isAdres ? 75 : 65,
+      })).toString("base64");
       activeSession = {
         browser,
         page,
         submitButton,
         isAdres,
-        requiresCaptcha: isAdres,
+        step: isAdres ? "enter_captcha" : "confirm_submit",
       };
       lastPreviewData = args;
       return res.json({
         type: "preview",
-        requiresCaptcha: isAdres,
+        ...(isAdres ? { step: "enter_captcha" } : {}),
         reply: isAdres
-          ? "Escribe el código de la imagen para que lo rellene antes de confirmar."
+          ? "1. Mira la imagen de ADRES y escribe el código CAPTCHA."
           : documentFilled
             ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
             : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
@@ -485,25 +517,13 @@ app.post("/api/captcha", requireAgentToken, async (req, res) => {
   }
   const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
   if (!captchaText) return res.status(400).json({ error: "Escribe el código de la imagen." });
-  if (!activeSession || !activeSession.isAdres || !activeSession.requiresCaptcha) {
+  if (!activeSession || !activeSession.isAdres || activeSession.step !== "enter_captcha") {
     return res.status(409).json({ error: "No hay una consulta ADRES esperando un código CAPTCHA." });
   }
 
   const session = activeSession;
   try {
-    const captchaSelectors =
-      '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
-    let captchaField = session.page.locator(captchaSelectors).first();
-    if (await captchaField.count() === 0) {
-      captchaField = session.page.locator('input[type="text"]:visible').nth(1);
-    }
-    await captchaField.waitFor({ state: "visible", timeout: 1500 });
-    await captchaField.click({ timeout: 1500 });
-    await captchaField.fill(captchaText, { timeout: 1500 });
-    await captchaField.evaluate((element) => {
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await fillAdresCaptcha(session.page, captchaText);
 
     session.submitButton = await highlightSubmitButton(
       session.page,
@@ -514,12 +534,12 @@ app.post("/api/captcha", requireAgentToken, async (req, res) => {
       return res.status(409).json({ error: "No se encontró el botón Consultar en ADRES." });
     }
     await session.page.waitForTimeout(400);
-    const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 70 })).toString("base64");
-    session.requiresCaptcha = false;
+    const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 75 })).toString("base64");
+    session.step = "confirm_submit";
     return res.json({
       type: "preview",
-      requiresCaptcha: false,
-      reply: "Código ingresado. Revisa en la captura que los datos y el código estén bien y pulsa Aceptar y enviar.",
+      step: "confirm_submit",
+      reply: "2. Verifica en la recaptura que la cédula y el código estén bien antes de enviar, o corrige el código.",
       screenshot,
       datos: lastPreviewData,
     });
@@ -533,7 +553,7 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
   const captchaCode = String((req.body && (req.body.captcha || req.body.code)) || "").trim();
   if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
   if (!activeSession) return res.status(409).json({ error: "No hay una previsualización activa para confirmar." });
-  if (activeSession.requiresCaptcha && !captchaCode) {
+  if (activeSession.isAdres && activeSession.step !== "confirm_submit") {
     return res.status(409).json({ error: "Primero ingresa el código CAPTCHA desde la previsualización." });
   }
   confirmationInProgress = true;
@@ -545,46 +565,37 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
   try {
     if (session.isAdres) {
       if (captchaCode) {
-        const captchaSelectors =
-          '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
-        let captchaField = session.page.locator(captchaSelectors).first();
-        if (await captchaField.count() === 0) {
-          captchaField = session.page.locator('input[type="text"]:visible').nth(1);
-        }
-        await captchaField.waitFor({ state: "visible", timeout: 1500 });
-        await captchaField.click({ timeout: 1500 });
-        await captchaField.fill(captchaCode, { timeout: 1500 });
-        await captchaField.evaluate((element) => {
-          element.dispatchEvent(new Event("input", { bubbles: true }));
-          element.dispatchEvent(new Event("change", { bubbles: true }));
-        });
+        await fillAdresCaptcha(session.page, captchaCode);
       }
 
       const browserContext = session.page.context();
       const pagesBefore = browserContext.pages().length;
-      const popupPromise = session.page.waitForEvent("popup", { timeout: 5000 }).catch(() => null);
-      const consultaButton = session.page.locator("#btnConsultar:visible").first();
+      const popupPromise = session.page.waitForEvent("popup", { timeout: 5500 }).catch(() => null);
+      const consultaButton = session.page.locator(
+        '#btnConsultar:visible, input[type="submit"]:visible, input[value*="Consultar" i]:visible'
+      ).first();
       const submitButton = await consultaButton.count() > 0 ? consultaButton : session.submitButton;
-      let submitError = null;
       if (submitButton) {
         try {
           await submitButton.click({ timeout: 2000 });
         } catch (error) {
-          submitError = error;
           console.warn("No se pudo pulsar Consultar en ADRES:", error.message);
         }
       } else {
-        submitError = new Error("No se encontró el botón Consultar en ADRES.");
+        console.warn("No se encontró el botón Consultar en ADRES.");
       }
 
       const popupPage = await popupPromise;
-      await session.page.waitForTimeout(1000);
+      await session.page.waitForTimeout(1200);
       const allPages = browserContext.pages();
-      const resultPage = popupPage || (allPages.length > pagesBefore ? allPages[allPages.length - 1] : null);
-      if (resultPage) {
-        await resultPage.waitForLoadState("domcontentloaded").catch(() => {});
-        await resultPage.waitForTimeout(1500);
-        const screenshot = (await resultPage.screenshot({
+      const newTab = popupPage || (allPages.length > pagesBefore ? allPages[allPages.length - 1] : null);
+      const navigatedSameTab = !session.page.url().toLowerCase().includes("consultarahora")
+        && !session.page.url().toLowerCase().includes("consultarafiliadoweb");
+      if (newTab !== null || navigatedSameTab) {
+        const targetPage = newTab || session.page;
+        await targetPage.waitForLoadState("domcontentloaded").catch(() => {});
+        await targetPage.waitForTimeout(1500);
+        const screenshot = (await targetPage.screenshot({
           type: "jpeg",
           quality: 75,
           fullPage: true,
@@ -593,18 +604,11 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
         activeSession = null;
         lastPreviewData = null;
         const radicado = `COL360-${Date.now().toString().slice(-6)}`;
-        return res.json({ ok: true, screenshot, radicado });
+        return res.json({ ok: true, step: "done", screenshot, radicado });
       }
 
-      const captchaSelectors =
-        '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
-      let captchaField = session.page.locator(captchaSelectors).first();
-      if (await captchaField.count() === 0) {
-        captchaField = session.page.locator('input[type="text"]:visible').nth(1);
-      }
-      await captchaField.waitFor({ state: "visible", timeout: 1500 });
-      await captchaField.fill("");
-      session.requiresCaptcha = true;
+      await fillAdresCaptcha(session.page, "");
+      session.step = "enter_captcha";
       const screenshot = (await session.page.screenshot({
         type: "jpeg",
         quality: 75,
@@ -612,10 +616,9 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
       })).toString("base64");
       return res.json({
         ok: false,
-        retryCaptcha: true,
         type: "preview",
-        requiresCaptcha: true,
-        reply: "El código CAPTCHA era incorrecto. Escribe el nuevo código de la imagen y pulsa Aceptar y enviar.",
+        step: "enter_captcha",
+        reply: "El código CAPTCHA salió mal y no abrió la consulta. Escribe el nuevo código de la imagen.",
         screenshot,
         datos: lastPreviewData,
       });
@@ -646,7 +649,7 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
       });
     }
     const radicado = `COL360-${Date.now().toString().slice(-6)}`;
-    return res.json({ ok: true, screenshot, radicado });
+    return res.json({ ok: true, step: "done", screenshot, radicado });
   } catch (error) {
     if (session.isAdres) {
       activeSession = session;
