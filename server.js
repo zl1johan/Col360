@@ -352,25 +352,54 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
           reply: `No pude abrir el portal oficial de ${args.entidad}. Puede estar temporalmente fuera de servicio; inténtalo más tarde.`,
         });
       }
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(selectedPortal.tipo === "simit" ? 2500 : 1500);
       let documentFilled = false;
       let submitButton = null;
       if (selectedPortal.tipo === "simit") {
+        try {
+          const closeControls = page.locator(
+            'button:has-text("×"), .modal button.close, [role="dialog"] button, button[aria-label="Close"], .close'
+          );
+          for (const control of await closeControls.all()) {
+            if (await control.isVisible()) {
+              await control.click({ timeout: 1200 });
+              break;
+            }
+          }
+        } catch (error) {
+          console.warn("No se pudo hacer clic en el cierre del anuncio de SIMIT:", error.message);
+        }
         try {
           await page.keyboard.press("Escape");
         } catch (error) {
           console.warn("No se pudo cerrar el anuncio de SIMIT con Escape:", error.message);
         }
         try {
-          await page.locator(
-            'button.close, .modal .close, button:has-text("Cerrar"), button:has-text("Entendido"), [aria-label="Close"], .btn-close'
-          ).first().click({ timeout: 1200 });
+          await page.mouse.click(15, 15);
         } catch (error) {
-          if (error.name !== "TimeoutError") {
-            console.warn("No se pudo cerrar el anuncio emergente de SIMIT:", error.message);
-          }
+          console.warn("No se pudo hacer clic en el fondo del anuncio de SIMIT:", error.message);
         }
-        documentFilled = await fillFirstVisibleText(page, args.documento, "SIMIT");
+        try {
+          await page.evaluate(() => {
+            document.querySelectorAll(".modal, .modal-backdrop, [role='dialog'], .cdk-overlay-container")
+              .forEach((element) => element.remove());
+            document.body.classList.remove("modal-open");
+            document.body.style.overflow = "auto";
+          });
+        } catch (error) {
+          console.warn("No se pudo eliminar el modal del DOM de SIMIT:", error.message);
+        }
+        await page.waitForTimeout(400);
+        try {
+          const field = page.locator(
+            'input[placeholder*="identificación" i]:visible, input[placeholder*="placa" i]:visible, input[type="text"]:visible'
+          ).first();
+          await field.click({ timeout: 1500 });
+          await field.fill(String(args.documento), { timeout: 1500 });
+          documentFilled = true;
+        } catch (error) {
+          console.warn("No se pudo completar el documento o placa en SIMIT:", error.message);
+        }
         submitButton = await highlightSubmitButton(
           page,
           'button[type="submit"], button:has(svg), button.btn-primary',
