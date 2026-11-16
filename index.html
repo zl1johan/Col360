@@ -737,6 +737,7 @@
 
     <script>
       "use strict";
+      const DEFAULT_SERVER_TOKEN = "col360-demo-2026";
       const DEFAULT_SERVER_URL = "https://rejoin-dandelion-affected.ngrok-free.dev";
       const NTFY_TOPIC = "col360-johan-2026";
       const svgIcon = (color, shapes) =>
@@ -863,7 +864,7 @@
         agentBusy: false,
       };
       let serverUrl = DEFAULT_SERVER_URL;
-      let serverToken = "";
+      let serverToken = DEFAULT_SERVER_TOKEN;
       let serverOnline = false;
 
       const $ = (selector, root) => (root || document).querySelector(selector);
@@ -1181,10 +1182,11 @@
           } else {
             serverUrl = normalizeServerUrl(localStorage.getItem(SERVER_URL_STORAGE) || DEFAULT_SERVER_URL);
           }
-          serverToken = sessionStorage.getItem(SERVER_TOKEN_STORAGE) || "";
+          serverToken = localStorage.getItem(SERVER_TOKEN_STORAGE) || DEFAULT_SERVER_TOKEN;
         } catch (error) {
           console.error("No se pudo cargar la configuración del servidor Col360.", error);
           serverUrl = DEFAULT_SERVER_URL;
+          serverToken = DEFAULT_SERVER_TOKEN;
         }
         refreshServerHealth();
         window.setInterval(refreshServerHealth, 15000);
@@ -1232,7 +1234,10 @@
         try {
           const response = await fetch(`${serverUrl}/health`, {
             method: "GET",
-            headers: { "ngrok-skip-browser-warning": "true" },
+            headers: {
+              Authorization: `Bearer ${serverToken}`,
+              "ngrok-skip-browser-warning": "true",
+            },
             cache: "no-store",
             signal: controller.signal,
           });
@@ -1250,12 +1255,7 @@
 
       async function serverRequest(route, body) {
         if (!serverUrl) throw new Error("El servidor local está en reposo o no tiene una URL configurada.");
-        if (!serverToken) {
-          const enteredToken = window.prompt(`Pega el token COL360_AGENT_TOKEN para ${serverUrl}. Solo continúa si confías en este servidor:`);
-          if (enteredToken === null || !enteredToken.trim()) throw new Error("Se requiere el token de acceso del servidor.");
-          serverToken = enteredToken.trim();
-          sessionStorage.setItem(SERVER_TOKEN_STORAGE, serverToken);
-        }
+        serverToken = localStorage.getItem(SERVER_TOKEN_STORAGE) || DEFAULT_SERVER_TOKEN;
         const response = await fetch(`${serverUrl}${route}`, {
           method: "POST",
           headers: {
