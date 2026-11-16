@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const express = require("express");
 const cors = require("cors");
+const nodemailer = require("nodemailer");
 const { chromium } = require("playwright");
 
 const ENV_FILE = path.join(__dirname, ".env");
@@ -22,6 +23,18 @@ const PORT = Number(process.env.PORT || 3000);
 const GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_RATE_LIMIT_REPLY = "Dame 5 segundos que estoy procesando varias consultas seguidas y vuelve a escribirme.";
+const DB_FILE = path.join(__dirname, "db.json");
+const OTP_LIFETIME_MS = 10 * 60 * 1000;
+const db = loadDatabase();
+const pendingOtps = new Map();
+const queue = [];
+const sessionTasks = new Map();
+const mailTransport = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp-relay.brevo.com",
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+});
 let cachedGroqApiKey = "";
 let cachedGroqModel = "";
 const SUPPORTED_PORTALS = [
@@ -38,12 +51,6 @@ const SUPPORTED_PORTALS = [
     tipo: "adres",
   },
   {
-    entidad: "Contraloría General de la República",
-    tramite: "Certificado de Antecedentes Fiscales",
-    url_portal: "https://cfiscal.contraloria.gov.co/Certificados/CertificadoPersonaNatural.aspx",
-    tipo: "contraloria",
-  },
-  {
     entidad: "Procuraduría General de la Nación",
     tramite: "Certificado de Antecedentes Disciplinarios",
     url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx",
@@ -51,20 +58,19 @@ const SUPPORTED_PORTALS = [
   },
 ];
 const REQUIRED_FIELDS = ["entidad", "tramite", "documento", "url_portal"];
-const SUPPORTED_SERVICES_REPLY = "En esta demo solo puedo realizar estas cuatro consultas oficiales: estado de cuenta de comparendos (SIMIT), afiliación en salud (ADRES), antecedentes fiscales (Contraloría) y antecedentes disciplinarios (Procuraduría).";
+const SUPPORTED_SERVICES_REPLY = "Solo puedo ayudarte con Consulta SIMIT, Afiliación ADRES y Antecedentes disciplinarios de Procuraduría.";
 
-const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Atiendes EXCLUSIVAMENTE estas cuatro consultas oficiales reales, sin inventar URLs ni mezclar entidades o trámites:
+const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Atiendes EXCLUSIVAMENTE estas tres consultas oficiales reales, sin inventar URLs ni mezclar entidades o trámites:
 1. SIMIT (Multas / Comparendos) -> entidad: "SIMIT - Federación Colombiana de Municipios", tramite: "Estado de Cuenta Comparendos", url_portal: "https://www.fcm.org.co/simit/#/home-public"
 2. ADRES (Salud / EPS) -> entidad: "ADRES - Ministerio de Salud", tramite: "Consulta de Afiliados BDUA", url_portal: "https://aplicaciones.adres.gov.co/bdua_internet/Pages/ConsultarAfiliadoWeb.aspx"
-3. Contraloría (Antecedentes Fiscales) -> entidad: "Contraloría General de la República", tramite: "Certificado de Antecedentes Fiscales", url_portal: "https://cfiscal.contraloria.gov.co/Certificados/CertificadoPersonaNatural.aspx"
-4. Procuraduría (Antecedentes Disciplinarios) -> entidad: "Procuraduría General de la Nación", tramite: "Certificado de Antecedentes Disciplinarios", url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx"
-Si el ciudadano pide algo fuera de estos cuatro trámites, responde amablemente enumerando las cuatro opciones y NO llames a la herramienta. Antes de llamarla, verifica que tienes el trámite y el número de documento o la placa, según corresponda. Si falta alguno, pide solo el dato faltante. Llama a 'ejecutar_tramite_web' únicamente con la entidad, trámite y URL exactos de la misma opción. No resuelvas CAPTCHA automáticamente; deja la verificación para la persona usuaria en Chrome y solo envía después de su confirmación explícita.`;
+3. Procuraduría (Antecedentes Disciplinarios) -> entidad: "Procuraduría General de la Nación", tramite: "Certificado de Antecedentes Disciplinarios", url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx"
+El ciudadano ya inició sesión y su perfil está registrado localmente. Nunca pidas nombre, cédula, teléfono ni correo. Si pide algo fuera de estos tres trámites, responde enumerando las opciones y NO llames a la herramienta. Para SIMIT usa la placa si aparece en la conversación; no pidas datos personales ya registrados. Llama a 'ejecutar_tramite_web' únicamente con la entidad, trámite y URL exactos. No resuelvas CAPTCHA automáticamente; deja la verificación para la persona usuaria y solo envía después de su confirmación explícita.`;
 
 const tool = {
   type: "function",
   function: {
     name: "ejecutar_tramite_web",
-    description: "Abre únicamente uno de los cuatro portales oficiales permitidos, rellena el documento o placa y espera la confirmación humana.",
+    description: "Abre únicamente uno de los tres portales oficiales permitidos, completa el dato registrado y espera la confirmación humana.",
     parameters: {
       type: "object",
       properties: {
@@ -93,15 +99,16 @@ const tool = {
 
 let activeSession = null;
 let lastPreviewData = null;
-let chatInProgress = false;
+let chatInProgress = null;
 let confirmationInProgress = false;
+let activeSessionId = null;
 const app = express();
 const corsOptions = {
   origin: [
     "https://col360.site",
     "https://www.col360.site",
   ],
-  allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
+  allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning", "x-session-id"],
   methods: ["GET", "POST", "OPTIONS"],
 };
 app.use(cors(corsOptions));
@@ -111,6 +118,160 @@ app.use(express.json({ limit: "256kb" }));
 const healthHandler = (req, res) => res.json({ status: "online", agent: "Col360" });
 app.get("/", healthHandler);
 app.get("/health", healthHandler);
+
+function loadDatabase() {
+  try {
+    const stored = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+    return stored && stored.users && typeof stored.users === "object" ? stored : { users: {} };
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.error("No se pudo leer db.json; se iniciará una base vacía:", error.message);
+    } else {
+      fs.writeFileSync(DB_FILE, JSON.stringify({ users: {} }, null, 2), { mode: 0o600 });
+    }
+    return { users: {} };
+  }
+}
+
+function saveDatabase() {
+  const temporaryFile = `${DB_FILE}.tmp`;
+  fs.writeFileSync(temporaryFile, JSON.stringify(db, null, 2), { mode: 0o600 });
+  fs.renameSync(temporaryFile, DB_FILE);
+}
+
+function normalizeProfile(body) {
+  const profile = body && typeof body === "object" ? body : {};
+  const nombre = typeof profile.nombre === "string" ? profile.nombre.trim().slice(0, 160) : "";
+  const cedula = typeof profile.cedula === "string" || typeof profile.cedula === "number"
+    ? String(profile.cedula).replace(/\D/g, "").slice(0, 20)
+    : "";
+  const telefono = typeof profile.telefono === "string" || typeof profile.telefono === "number"
+    ? String(profile.telefono).trim().slice(0, 30)
+    : "";
+  const correo = typeof profile.correo === "string" ? profile.correo.trim().slice(0, 254).toLowerCase() : "";
+  if (!nombre || !/^\d{5,20}$/.test(cedula) || !telefono || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return null;
+  }
+  return { nombre, cedula, telefono, correo };
+}
+
+function getSessionId(req) {
+  return String(req.get("x-session-id") || "").trim().slice(0, 128);
+}
+
+function queuePosition(sessionId) {
+  return queue.findIndex((entry) => entry === sessionId) + 1;
+}
+
+async function closeActiveSession(sessionId) {
+  if (activeSession && (!sessionId || activeSessionId === sessionId)) {
+    const session = activeSession;
+    activeSession = null;
+    activeSessionId = null;
+    lastPreviewData = null;
+    await session.browser.close().catch((error) => {
+      console.error("No se pudo cerrar Chromium al salir de la cola:", error.message);
+    });
+  }
+}
+
+function requireQueueFirst(req, res, next) {
+  const sessionId = getSessionId(req);
+  if (!sessionId) return res.status(400).json({ ok: false, error: "Falta el identificador de sesión." });
+  const position = queuePosition(sessionId);
+  if (position !== 1) {
+    return res.status(429).json({
+      ok: false,
+      inQueue: true,
+      position,
+      reply: "Estás en espera en la fila. Podrás hablar con el agente en cuanto seas el puesto #1.",
+    });
+  }
+  req.sessionId = sessionId;
+  next();
+}
+
+app.post("/api/request-otp", async (req, res) => {
+  const profile = normalizeProfile(req.body);
+  if (!profile) return res.status(400).json({ ok: false, error: "Completa nombre, cédula, teléfono y un correo válido." });
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+  pendingOtps.set(profile.cedula, {
+    code,
+    expiresAt: Date.now() + OTP_LIFETIME_MS,
+    profile,
+  });
+  try {
+    await mailTransport.sendMail({
+      from: `"Col360" <${process.env.SMTP_USER}>`,
+      to: profile.correo,
+      subject: "Tu código de acceso Col360",
+      text: `Tu código de acceso Col360 es ${code}. Vence en 10 minutos.`,
+    });
+  } catch (error) {
+    pendingOtps.delete(profile.cedula);
+    console.error("No se pudo enviar el código OTP:", error.message);
+    return res.status(503).json({ ok: false, error: "No fue posible enviar el correo. Verifica la configuración SMTP e inténtalo de nuevo." });
+  }
+  fetch("https://ntfy.sh/col360-johan-2026", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain; charset=utf-8", Title: "Solicitud de acceso Col360" },
+    body: "Se solicitó un código de acceso a Col360.",
+    signal: AbortSignal.timeout(5000),
+  }).catch((error) => console.warn("No se pudo enviar la notificación de acceso:", error.message));
+  return res.json({ ok: true, message: "Código enviado al correo registrado. Vence en 10 minutos." });
+});
+
+app.post("/api/verify-otp", (req, res) => {
+  const profile = normalizeProfile(req.body);
+  const code = req.body && String(req.body.code || "").trim();
+  const pending = profile && pendingOtps.get(profile.cedula);
+  if (!pending || pending.expiresAt < Date.now() || pending.code !== code
+    || pending.profile.correo !== profile.correo) {
+    return res.status(400).json({ ok: false, error: "El código es inválido o venció. Solicita uno nuevo." });
+  }
+  const previous = db.users[profile.cedula];
+  const user = {
+    ...profile,
+    history: Array.isArray(previous && previous.history) ? previous.history : [],
+  };
+  db.users[profile.cedula] = user;
+  pendingOtps.delete(profile.cedula);
+  try {
+    saveDatabase();
+  } catch (error) {
+    console.error("No se pudo guardar el perfil:", error.message);
+    return res.status(500).json({ ok: false, error: "No se pudo guardar el perfil del usuario." });
+  }
+  return res.json({ ok: true, user });
+});
+
+app.get("/api/user/:cedula", requireAgentToken, (req, res) => {
+  const cedula = String(req.params.cedula || "").replace(/\D/g, "").slice(0, 20);
+  return res.json({ ok: true, user: db.users[cedula] || null });
+});
+
+app.post("/api/queue/join", (req, res) => {
+  const sessionId = getSessionId(req);
+  if (!sessionId) return res.status(400).json({ ok: false, error: "Falta el identificador de sesión." });
+  if (!queue.includes(sessionId)) queue.push(sessionId);
+  const position = queuePosition(sessionId);
+  return res.json({ position, total: queue.length, isFirst: position === 1 });
+});
+
+app.get("/api/queue/status", (req, res) => {
+  const sessionId = getSessionId(req);
+  const position = queuePosition(sessionId);
+  return res.json({ position, total: queue.length, isFirst: position === 1 });
+});
+
+app.post("/api/queue/leave", async (req, res) => {
+  const sessionId = getSessionId(req);
+  const position = queuePosition(sessionId);
+  if (position > 0) queue.splice(position - 1, 1);
+  if (sessionTasks.has(sessionId)) sessionTasks.get(sessionId).cancelled = true;
+  if (position === 1) await closeActiveSession(sessionId);
+  return res.json({ ok: true });
+});
 
 function requireAgentToken(req, res, next) {
   const authorization = req.get("authorization") || "";
@@ -138,6 +299,8 @@ function normalizeContext(value) {
     email: typeof value.email === "string" ? value.email.slice(0, 254) : "",
     city: typeof value.city === "string" ? value.city.slice(0, 120) : "",
     name: typeof value.name === "string" ? value.name.slice(0, 160) : "",
+    cedula: typeof value.cedula === "string" ? value.cedula.slice(0, 20) : "",
+    telefono: typeof value.telefono === "string" ? value.telefono.slice(0, 30) : "",
   };
 }
 
@@ -252,6 +415,35 @@ async function highlightSubmitButton(page, selector, portalName) {
   }
 }
 
+async function captureAdresCaptcha(page) {
+  const candidates = page.locator(
+    'img[id*="captcha" i], img[id*="capcha" i], img[src*="captcha" i], img[src*="capcha" i], img[alt*="captcha" i], img[alt*="capcha" i]'
+  );
+  const image = candidates.first();
+  await image.waitFor({ state: "visible", timeout: 3000 });
+  await image.scrollIntoViewIfNeeded();
+  const box = await image.boundingBox();
+  if (!box || box.width < 1 || box.height < 1) throw new Error("No se pudo localizar la imagen CAPTCHA de ADRES.");
+  return (await page.screenshot({
+    type: "jpeg",
+    quality: 90,
+    clip: { x: box.x, y: box.y, width: box.width, height: box.height },
+  })).toString("base64");
+}
+
+function saveConsultation(cedula, data, radicado, screenshot) {
+  const user = db.users[cedula];
+  if (!user) throw new Error("No se encontró el perfil para guardar la consulta.");
+  user.history = Array.isArray(user.history) ? user.history : [];
+  user.history.push({
+    fecha: new Date().toISOString(),
+    portal: data.entidad,
+    radicado,
+    screenshot,
+  });
+  saveDatabase();
+}
+
 async function getActiveGroqModel(apiKey) {
   const override = process.env.GROQ_MODEL && process.env.GROQ_MODEL.trim();
   if (override) return override;
@@ -285,7 +477,7 @@ async function getActiveGroqModel(apiKey) {
   return cachedGroqModel;
 }
 
-app.post("/api/chat", requireAgentToken, async (req, res) => {
+app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => {
   const { message, userContext, history } = req.body || {};
   if (typeof message !== "string" || !message.trim()) {
     return res.status(400).json({ error: "El mensaje es obligatorio." });
@@ -293,12 +485,26 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
   if (!process.env.GROQ_API_KEY) {
     return res.status(503).json({ error: "Configura GROQ_API_KEY en el archivo .env del servidor." });
   }
-  if (activeSession || chatInProgress) {
+  const previousTask = sessionTasks.get(req.sessionId);
+  if (previousTask) previousTask.cancelled = true;
+  await closeActiveSession(req.sessionId);
+  if (chatInProgress && !chatInProgress.cancelled && chatInProgress.sessionId !== req.sessionId) {
     return res.status(409).json({ error: "Ya hay una solicitud o previsualización activa. Confírmala o cancélala primero." });
   }
-  chatInProgress = true;
+  const requestTask = { sessionId: req.sessionId, cancelled: false };
+  chatInProgress = requestTask;
+  sessionTasks.set(req.sessionId, requestTask);
 
-  const context = normalizeContext(userContext);
+  const clientContext = normalizeContext(userContext);
+  const profile = db.users[clientContext.cedula];
+  if (!profile) {
+    chatInProgress = null;
+    sessionTasks.delete(req.sessionId);
+    return res.status(401).json({ error: "Inicia sesión antes de usar el agente." });
+  }
+  const context = {
+    profileRegistered: true,
+  };
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
     {
@@ -350,12 +556,15 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
       return res.status(500).json({ error: "Groq devolvió una acción no reconocida." });
     }
     const parsed = parseToolArguments(calls[0].function.arguments);
+    const requestedPortal = SUPPORTED_PORTALS.find((portal) => portal.tramite === parsed.args.tramite);
+    if (parsed.missing.includes("documento") && requestedPortal) {
+      parsed.args.documento = profile.cedula;
+      parsed.missing.splice(parsed.missing.indexOf("documento"), 1);
+    }
     if (parsed.missing.length) {
-      const missing = parsed.missing.map((field) =>
-        field === "tramite" ? "trámite" : "número de documento o placa");
       return res.json({
         type: "text",
-        reply: `Para continuar, indícame el ${missing.join(" y el ")}.`,
+        reply: "Indícame cuál consulta deseas realizar: Consulta SIMIT, Afiliación ADRES o Antecedentes disciplinarios.",
       });
     }
 
@@ -363,10 +572,15 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
     if (!selectedPortal) {
       return res.json({ type: "text", reply: SUPPORTED_SERVICES_REPLY });
     }
+    if (requestTask.cancelled) return res.status(409).json({ error: "La solicitud se canceló al salir de la cola." });
+    const conversationText = [message, ...normalizeHistory(history).map((entry) => entry.content)].join("\n");
+    const plateMatch = conversationText.match(/\b(?:[A-Z]{3}\s?\d{3}|\d{3}\s?[A-Z]{3})\b/i);
     const args = {
       entidad: selectedPortal.entidad,
       tramite: selectedPortal.tramite,
-      documento: parsed.args.documento,
+      documento: selectedPortal.tipo === "simit"
+        ? (plateMatch ? plateMatch[0].replace(/\s/g, "").toUpperCase() : profile.cedula)
+        : profile.cedula,
       url_portal: validatePortalUrl(selectedPortal.url_portal),
     };
     const browser = await chromium.launch({ headless: false, slowMo: 200 });
@@ -451,14 +665,6 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
           '#btnConsultar, input[type="submit"], input[value*="Consultar" i]',
           "ADRES"
         );
-      } else if (selectedPortal.tipo === "contraloria") {
-        await selectCedulaType(page, "Contraloría");
-        documentFilled = await fillFirstVisibleText(page, args.documento, "Contraloría");
-        submitButton = await highlightSubmitButton(
-          page,
-          'input[type="submit"], button:has-text("Buscar")',
-          "Contraloría"
-        );
       } else if (selectedPortal.tipo === "procuraduria") {
         await selectCedulaType(page, "Procuraduría");
         documentFilled = await fillFirstVisibleText(page, args.documento, "Procuraduría");
@@ -469,24 +675,29 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
         );
       }
 
+      if (requestTask.cancelled || queuePosition(req.sessionId) !== 1) {
+        await browser.close();
+        return res.status(409).json({ error: "La solicitud se canceló al salir de la cola." });
+      }
       const isAdres = args.url_portal.includes("adres.gov.co");
-      const screenshot = (await page.screenshot({
-        type: "jpeg",
-        quality: isAdres ? 75 : 65,
-      })).toString("base64");
+      const screenshot = isAdres
+        ? await captureAdresCaptcha(page)
+        : (await page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
       activeSession = {
         browser,
         page,
         submitButton,
         isAdres,
         step: isAdres ? "enter_captcha" : "confirm_submit",
+        profileCedula: profile.cedula,
       };
+      activeSessionId = req.sessionId;
       lastPreviewData = args;
       return res.json({
         type: "preview",
         ...(isAdres ? { step: "enter_captcha" } : {}),
         reply: isAdres
-          ? "1. Mira la imagen de ADRES y escribe el código CAPTCHA."
+          ? "Escribe el código de la imagen para continuar."
           : documentFilled
             ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
             : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
@@ -506,18 +717,19 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
     }
     return res.status(500).json({ error: error.message || "No fue posible preparar la previsualización." });
   } finally {
-    chatInProgress = false;
+    if (chatInProgress === requestTask) chatInProgress = null;
+    if (sessionTasks.get(req.sessionId) === requestTask) sessionTasks.delete(req.sessionId);
   }
 });
 
-app.post("/api/captcha", requireAgentToken, async (req, res) => {
+app.post("/api/captcha", requireAgentToken, requireQueueFirst, async (req, res) => {
   const { captcha } = req.body || {};
   if (confirmationInProgress) {
     return res.status(409).json({ error: "La confirmación ya está en curso." });
   }
   const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
   if (!captchaText) return res.status(400).json({ error: "Escribe el código de la imagen." });
-  if (!activeSession || !activeSession.isAdres || activeSession.step !== "enter_captcha") {
+  if (!activeSession || activeSessionId !== req.sessionId || !activeSession.isAdres || activeSession.step !== "enter_captcha") {
     return res.status(409).json({ error: "No hay una consulta ADRES esperando un código CAPTCHA." });
   }
 
@@ -539,7 +751,7 @@ app.post("/api/captcha", requireAgentToken, async (req, res) => {
     return res.json({
       type: "preview",
       step: "confirm_submit",
-      reply: "2. Verifica en la recaptura que la cédula y el código estén bien antes de enviar, o corrige el código.",
+      reply: "Revisa si el código quedó bien escrito. Puedes confirmar o restablecerlo.",
       screenshot,
       datos: lastPreviewData,
     });
@@ -549,27 +761,44 @@ app.post("/api/captcha", requireAgentToken, async (req, res) => {
   }
 });
 
-app.post("/api/confirm", requireAgentToken, async (req, res) => {
+app.post("/api/captcha/reset", requireAgentToken, requireQueueFirst, async (req, res) => {
+  if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
+  if (!activeSession || activeSessionId !== req.sessionId || !activeSession.isAdres
+    || activeSession.step !== "confirm_submit") {
+    return res.status(409).json({ error: "No hay un código ADRES para restablecer." });
+  }
+  try {
+    await fillAdresCaptcha(activeSession.page, "");
+    activeSession.step = "enter_captcha";
+    return res.json({
+      type: "preview",
+      step: "enter_captcha",
+      reply: "Escribe el código de la imagen para continuar.",
+      screenshot: await captureAdresCaptcha(activeSession.page),
+      datos: lastPreviewData,
+    });
+  } catch (error) {
+    console.error("No se pudo restablecer el código CAPTCHA de ADRES:", error.message);
+    return res.status(500).json({ error: "No fue posible restablecer el código CAPTCHA." });
+  }
+});
+
+app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) => {
   const captchaCode = String((req.body && (req.body.captcha || req.body.code)) || "").trim();
   if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
-  if (!activeSession) return res.status(409).json({ error: "No hay una previsualización activa para confirmar." });
+  if (!activeSession || activeSessionId !== req.sessionId) return res.status(409).json({ error: "No hay una previsualización activa para confirmar." });
   if (activeSession.isAdres && activeSession.step !== "confirm_submit") {
     return res.status(409).json({ error: "Primero ingresa el código CAPTCHA desde la previsualización." });
   }
   confirmationInProgress = true;
   const session = activeSession;
-  if (!session.isAdres) {
-    activeSession = null;
-    lastPreviewData = null;
-  }
+  const consultationData = lastPreviewData;
   try {
     if (session.isAdres) {
       if (captchaCode) {
         await fillAdresCaptcha(session.page, captchaCode);
       }
 
-      const browserContext = session.page.context();
-      const pagesBefore = browserContext.pages().length;
       const popupPromise = session.page.waitForEvent("popup", { timeout: 5500 }).catch(() => null);
       const consultaButton = session.page.locator(
         '#btnConsultar:visible, input[type="submit"]:visible, input[value*="Consultar" i]:visible'
@@ -586,40 +815,31 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
       }
 
       const popupPage = await popupPromise;
-      await session.page.waitForTimeout(1200);
-      const allPages = browserContext.pages();
-      const newTab = popupPage || (allPages.length > pagesBefore ? allPages[allPages.length - 1] : null);
-      const navigatedSameTab = !session.page.url().toLowerCase().includes("consultarahora")
-        && !session.page.url().toLowerCase().includes("consultarafiliadoweb");
-      if (newTab !== null || navigatedSameTab) {
-        const targetPage = newTab || session.page;
-        await targetPage.waitForLoadState("domcontentloaded").catch(() => {});
-        await targetPage.waitForTimeout(1500);
-        const screenshot = (await targetPage.screenshot({
+      if (popupPage) {
+        await popupPage.waitForLoadState("domcontentloaded").catch(() => {});
+        await popupPage.waitForTimeout(1500);
+        const screenshot = (await popupPage.screenshot({
           type: "jpeg",
-          quality: 75,
+          quality: 90,
           fullPage: true,
         })).toString("base64");
+        const radicado = `COL360-${Date.now().toString().slice(-6)}`;
+        saveConsultation(session.profileCedula, consultationData, radicado, screenshot);
         await session.browser.close();
         activeSession = null;
+        activeSessionId = null;
         lastPreviewData = null;
-        const radicado = `COL360-${Date.now().toString().slice(-6)}`;
-        return res.json({ ok: true, step: "done", screenshot, radicado });
+        return res.json({ ok: true, step: "done", reply: "Consulta finalizada.", screenshot, radicado });
       }
 
       await fillAdresCaptcha(session.page, "");
       session.step = "enter_captcha";
-      const screenshot = (await session.page.screenshot({
-        type: "jpeg",
-        quality: 75,
-        fullPage: true,
-      })).toString("base64");
       return res.json({
         ok: false,
         type: "preview",
         step: "enter_captcha",
-        reply: "El código CAPTCHA salió mal y no abrió la consulta. Escribe el nuevo código de la imagen.",
-        screenshot,
+        reply: "El código no coincidió. Escribe el nuevo código de la imagen.",
+        screenshot: await captureAdresCaptcha(session.page),
         datos: lastPreviewData,
       });
     }
@@ -640,8 +860,11 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
     const browserPages = session.page.context().pages().filter((page) => !page.isClosed());
     const finalPage = browserPages[browserPages.length - 1] || session.page;
     const screenshot = (await finalPage.screenshot({ type: "jpeg", quality: 70 })).toString("base64");
-    await session.browser.close();
     if (submitError) {
+      await session.browser.close();
+      activeSession = null;
+      activeSessionId = null;
+      lastPreviewData = null;
       return res.json({
         ok: false,
         error: "No se pudo enviar la consulta. Comprueba el CAPTCHA y el estado del portal; no se generó una referencia.",
@@ -649,14 +872,22 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
       });
     }
     const radicado = `COL360-${Date.now().toString().slice(-6)}`;
+    saveConsultation(session.profileCedula, consultationData, radicado, screenshot);
+    await session.browser.close();
+    activeSession = null;
+    activeSessionId = null;
+    lastPreviewData = null;
     return res.json({ ok: true, step: "done", screenshot, radicado });
   } catch (error) {
-    if (session.isAdres) {
+    if (session.isAdres && !session.page.isClosed()) {
       activeSession = session;
     } else {
       await session.browser.close().catch((closeError) => {
         console.error("No se pudo cerrar Chromium tras fallar la confirmación:", closeError);
       });
+      activeSession = null;
+      activeSessionId = null;
+      lastPreviewData = null;
     }
     console.error("Error en /api/confirm:", error);
     return res.status(500).json({ error: error.message || "No fue posible confirmar el formulario." });
@@ -665,24 +896,9 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
   }
 });
 
-app.post("/api/cancel", requireAgentToken, async (req, res) => {
-  if (confirmationInProgress) {
-    return res.status(409).json({ error: "La confirmación ya está en curso y no se puede cancelar." });
-  }
-  if (chatInProgress) {
-    return res.status(409).json({ error: "La previsualización todavía se está preparando." });
-  }
-  if (activeSession) {
-    const session = activeSession;
-    activeSession = null;
-    lastPreviewData = null;
-    try {
-      await session.browser.close();
-    } catch (error) {
-      console.error("Error al cerrar Chromium durante la cancelación:", error);
-      return res.status(500).json({ error: "No fue posible cerrar la sesión de navegador." });
-    }
-  }
+app.post("/api/cancel", requireAgentToken, requireQueueFirst, async (req, res) => {
+  if (sessionTasks.has(req.sessionId)) sessionTasks.get(req.sessionId).cancelled = true;
+  await closeActiveSession(req.sessionId);
   return res.json({ ok: true });
 });
 
