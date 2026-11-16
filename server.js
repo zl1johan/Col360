@@ -71,7 +71,14 @@ let activeSession = null;
 let chatInProgress = false;
 let confirmationInProgress = false;
 const app = express();
-app.use(cors());
+const corsOptions = {
+  origin: "*",
+  allowedHeaders: ["Content-Type", "Authorization", "Bypass-Tunnel-Reminder"],
+  methods: ["GET", "POST", "OPTIONS"],
+};
+app.use(cors(corsOptions));
+// Express 5 rejects "*" as a route pattern; this regex matches every OPTIONS path.
+app.options(/.*/, cors());
 app.use(express.json({ limit: "256kb" }));
 
 function requireAgentToken(req, res, next) {
