@@ -434,6 +434,7 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
       activeSession = { browser, page, submitButton };
       return res.json({
         type: "preview",
+        requiresCaptcha: args.url_portal.includes("adres.gov.co"),
         reply: documentFilled
           ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
           : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
@@ -458,12 +459,27 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
 });
 
 app.post("/api/confirm", requireAgentToken, async (req, res) => {
+  const { captcha } = req.body || {};
   if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
   if (!activeSession) return res.status(409).json({ error: "No hay una previsualización activa para confirmar." });
   confirmationInProgress = true;
   const session = activeSession;
   activeSession = null;
   try {
+    const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
+    if (captchaText) {
+      const captchaSelectors =
+        'input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible, input[id*="Codigo" i]:visible';
+      let captchaField = session.page.locator(captchaSelectors).first();
+      if (await captchaField.count() === 0) {
+        captchaField = session.page.locator('input[type="text"]:visible').nth(1);
+      }
+      await captchaField.waitFor({ state: "visible", timeout: 1500 });
+      await captchaField.click({ timeout: 1500 });
+      await captchaField.fill(captchaText, { timeout: 1500 });
+      await session.page.waitForTimeout(300);
+    }
+
     let submitError = null;
     if (session.submitButton) {
       try {
@@ -475,8 +491,10 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
     } else {
       submitError = new Error("No se encontró un botón de consulta resaltado.");
     }
-    await session.page.waitForTimeout(2500);
-    const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
+    await session.page.waitForTimeout(3000);
+    const browserPages = session.page.context().pages().filter((page) => !page.isClosed());
+    const finalPage = browserPages[browserPages.length - 1] || session.page;
+    const screenshot = (await finalPage.screenshot({ type: "jpeg", quality: 70 })).toString("base64");
     await session.browser.close();
     if (submitError) {
       return res.json({

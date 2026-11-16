@@ -384,7 +384,7 @@
       .agent-header strong { display: block; }
       .agent-header small { color: #d8e5fb; }
       .icon-button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; font-size: 1.25rem; }
-      .agent-log { display: flex; min-height: 155px; flex: 1; flex-direction: column; gap: 10px; overflow-y: auto; padding: 16px; background: #f8faff; }
+      .agent-log { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; padding: 16px; background: #f8faff; }
       .chat-message { max-width: 91%; padding: 10px 12px; border-radius: 13px; background: #fff; box-shadow: 0 2px 8px rgba(22, 44, 80, .07); font-size: .85rem; white-space: pre-wrap; }
       .chat-message.user { align-self: flex-end; background: #e6efff; }
       .chat-message.error { border: 1px solid #f1d2cf; background: #fff6f5; color: #8d2923; }
@@ -403,14 +403,17 @@
       .agent-form input { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; outline-color: var(--blue); }
       .agent-form button { width: 44px; flex: 0 0 auto; border: 0; border-radius: 10px; background: var(--blue); color: #fff; font-size: 1.1rem; }
       .agent-form button:disabled, .quick-orders button:disabled { cursor: wait; opacity: .55; }
-      .web-preview-card { width: min(100%, 560px); padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(22,44,80,.08); }
+      .web-preview-card { width: min(100%, 560px); flex: 0 0 auto; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: 0 4px 14px rgba(22,44,80,.08); }
       .web-preview-card img { display: block; width: 100%; max-height: 300px; object-fit: contain; border: 1px solid var(--border); border-radius: 9px; background: #f8faff; }
       .web-preview-card h3 { margin: 12px 0 8px; font-size: .95rem; }
       .web-preview-data { display: grid; gap: 4px; margin: 0 0 12px; color: var(--muted); font-size: .76rem; }
       .web-preview-data strong { color: var(--ink); }
+      .web-preview-captcha { display: grid; gap: 6px; margin: 0 0 10px; color: var(--ink); font-size: .8rem; font-weight: 700; }
+      .web-preview-captcha input { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #9aabc4; border-radius: 9px; background: #fff; font: inherit; }
       .web-preview-actions { display: grid; gap: 8px; }
       .web-preview-actions .button { width: 100%; }
       .web-preview-final { margin-top: 10px; color: var(--green); font-size: .8rem; font-weight: 700; }
+      .web-preview-validation { margin: 0 0 8px; color: #8d2923; font-size: .8rem; font-weight: 700; }
       .login-overlay {
         position: fixed;
         z-index: 20;
@@ -475,6 +478,7 @@
         .top-actions { margin-left: auto; }
         .user-summary { display: none; }
         .top-actions .button { min-height: 38px; padding: 7px 12px; font-size: .8rem; }
+        .agent-panel { right: 8px; bottom: 76px; width: calc(100vw - 16px); max-height: calc(100vh - 90px); max-height: calc(100dvh - 90px); }
         .hero-inner { min-height: auto; grid-template-columns: 1fr; gap: 30px; padding: 55px 0; }
         .hero-card { max-width: 500px; }
         .hero-inner, .content-wrap, .dashboard-wrap { width: min(100% - 32px, 1120px); }
@@ -1360,7 +1364,7 @@
             }
             state.chatHistory.push({ role: "assistant", content: result.reply });
             appendMessage(result.reply, "agent");
-            const card = appendWebPreview(result.datos, result.screenshot);
+            const card = appendWebPreview(result, result.screenshot);
             state.pendingWebSubmission = { datos: result.datos, card };
             state.awaitingApproval = true;
           } else if ((!result.type || result.type === "text") && typeof result.reply === "string") {
@@ -1378,7 +1382,8 @@
         }
       }
 
-      function appendWebPreview(datos, screenshot) {
+      function appendWebPreview(data, screenshot) {
+        const datos = data.datos;
         const card = document.createElement("section");
         card.className = "web-preview-card";
         const image = document.createElement("img");
@@ -1406,6 +1411,22 @@
         });
         card.append(summary);
 
+        const needsCaptcha = data.requiresCaptcha === true
+          || (data.datos && data.datos.url_portal && data.datos.url_portal.includes("adres.gov.co"));
+        if (needsCaptcha) {
+          const captchaLabel = document.createElement("label");
+          captchaLabel.className = "web-preview-captcha";
+          captchaLabel.htmlFor = "captcha-code-input";
+          captchaLabel.append(document.createTextNode("Código de seguridad (escribe los caracteres de la imagen):"));
+          const captchaInput = document.createElement("input");
+          captchaInput.id = "captcha-code-input";
+          captchaInput.type = "text";
+          captchaInput.placeholder = "Ej: 7747";
+          captchaInput.autocomplete = "off";
+          captchaLabel.append(captchaInput);
+          card.append(captchaLabel);
+        }
+
         const actions = document.createElement("div");
         actions.className = "web-preview-actions";
         actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
@@ -1425,6 +1446,21 @@
       async function confirmWebPreview(card) {
         const pending = state.pendingWebSubmission;
         if (!pending) return;
+        const captchaInput = $("#captcha-code-input", card);
+        const captchaValue = captchaInput ? captchaInput.value.trim() : "";
+        if (captchaInput && !captchaValue) {
+          captchaInput.focus();
+          let notice = card.querySelector(".web-preview-validation");
+          if (!notice) {
+            notice = document.createElement("p");
+            notice.className = "web-preview-validation";
+            card.insertBefore(notice, card.querySelector(".web-preview-actions"));
+          }
+          notice.textContent = "Escribe el código de la imagen antes de confirmar";
+          return;
+        }
+        const validationNotice = card.querySelector(".web-preview-validation");
+        if (validationNotice) validationNotice.remove();
         const buttons = $$("[data-preview-action]", card);
         buttons.forEach((button) => { button.disabled = true; });
         let status = card.querySelector(".web-preview-final");
@@ -1435,7 +1471,10 @@
         }
         status.textContent = "Enviando la consulta y esperando la respuesta del portal…";
         try {
-          const result = await serverRequest("/api/confirm");
+          const result = await serverRequest(
+            "/api/confirm",
+            captchaInput ? { captcha: captchaValue } : {}
+          );
           if (typeof result.screenshot === "string") {
             const image = card.querySelector("img");
             image.src = `data:image/jpeg;base64,${result.screenshot}`;
