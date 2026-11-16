@@ -378,15 +378,47 @@
       .agent-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; background: var(--blue-dark); color: #fff; }
       .agent-header strong { display: block; }
       .agent-header small { color: #d8e5fb; }
+      .agent-header-actions { display: flex; align-items: center; gap: 7px; }
+      .api-key-button { padding: 7px 9px; border: 1px solid rgba(255,255,255,.28); border-radius: 8px; background: rgba(255,255,255,.1); color: #fff; font-size: .75rem; font-weight: 700; white-space: nowrap; }
       .icon-button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; font-size: 1.25rem; }
       .agent-log { display: flex; min-height: 155px; flex: 1; flex-direction: column; gap: 10px; overflow-y: auto; padding: 16px; background: #f8faff; }
       .chat-message { max-width: 91%; padding: 10px 12px; border-radius: 13px; background: #fff; box-shadow: 0 2px 8px rgba(22, 44, 80, .07); font-size: .85rem; white-space: pre-wrap; }
       .chat-message.user { align-self: flex-end; background: #e6efff; }
+      .chat-message.error { border: 1px solid #f1d2cf; background: #fff6f5; color: #8d2923; }
+      .agent-notice { padding: 0 15px 7px; color: var(--muted); font-size: .7rem; }
       .quick-orders { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 14px 4px; }
       .quick-orders button { padding: 7px 9px; border: 1px solid #dce5f2; border-radius: 999px; background: #fff; color: var(--blue); font-size: .74rem; font-weight: 700; }
       .agent-form { display: flex; gap: 8px; padding: 11px 14px 14px; }
       .agent-form input { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; outline-color: var(--blue); }
       .agent-form button { width: 44px; flex: 0 0 auto; border: 0; border-radius: 10px; background: var(--blue); color: #fff; font-size: 1.1rem; }
+      .agent-form button:disabled, .quick-orders button:disabled { cursor: wait; opacity: .55; }
+      .api-key-card { width: min(475px, 100%); padding: 28px; border-radius: 18px; background: #fff; box-shadow: 0 22px 70px rgba(8,24,50,.22); }
+      .api-key-card h2 { margin: 0 0 8px; font-size: 1.35rem; }
+      .api-key-card p { color: var(--muted); font-size: .86rem; }
+      .api-key-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 9px; margin-top: 16px; }
+      .key-status { min-height: 20px; margin: 10px 0 0; color: var(--green); font-size: .82rem; }
+      .action-card { width: min(760px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; padding: 26px; border: 1px solid #edf0f5; border-radius: 20px; background: #fff; box-shadow: 0 22px 70px rgba(8,24,50,.22); }
+      .action-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+      .action-head h2 { margin: 0; font-size: 1.4rem; }
+      .action-head p { margin: 5px 0 0; color: var(--muted); font-size: .85rem; }
+      .action-head a { flex: 0 0 auto; color: var(--blue); font-size: .82rem; font-weight: 700; }
+      .action-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 22px 0; padding: 0; list-style: none; }
+      .action-steps li { min-height: 90px; padding: 12px 10px; border: 1px solid var(--border); border-radius: 12px; background: #f8faff; color: var(--muted); font-size: .76rem; }
+      .action-steps li span { display: grid; width: 25px; height: 25px; margin-bottom: 8px; place-items: center; border-radius: 50%; background: #e6ebf3; color: #475671; font-weight: 800; }
+      .action-steps li.active { border-color: #9ab9ed; background: #edf4ff; color: var(--blue-dark); }
+      .action-steps li.active span { background: var(--blue); color: #fff; animation: actionPulse 1s infinite; }
+      .action-steps li.complete { border-color: #b7dfc7; background: #f0faf4; color: #246843; }
+      .action-steps li.complete span { background: #258151; color: #fff; }
+      .action-steps li.paused { border-color: #e8c86b; background: #fff9e8; color: #735710; }
+      .action-steps li.paused span { background: #e6b832; color: #332600; }
+      @keyframes actionPulse { 50% { box-shadow: 0 0 0 5px rgba(22,73,165,.13); } }
+      .action-status { min-height: 25px; margin: 0 0 12px; color: var(--blue-dark); font-size: .88rem; font-weight: 800; }
+      .action-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+      .action-fields .wide { grid-column: 1 / -1; }
+      .action-fields textarea { min-height: 75px; resize: vertical; }
+      .action-disclaimer { margin: 18px 0 0; padding: 12px; border-radius: 10px; background: #fff7e5; color: #674d12; font-size: .8rem; }
+      .action-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 17px; }
+      .action-buttons .button:disabled { cursor: not-allowed; opacity: .5; transform: none; box-shadow: none; }
       .login-overlay {
         position: fixed;
         z-index: 20;
@@ -462,6 +494,13 @@
         .appointments-list { grid-template-columns: 1fr; }
         .city-banner, .cta-panel { align-items: flex-start; flex-direction: column; }
         .dashboard-wrap { padding-top: 28px; }
+        .action-card { padding: 20px 16px; }
+        .action-steps { grid-template-columns: 1fr 1fr; }
+        .action-steps li { min-height: 76px; }
+        .action-fields { grid-template-columns: 1fr; }
+        .action-fields .wide { grid-column: auto; }
+        .action-buttons { flex-direction: column-reverse; }
+        .action-buttons .button { width: 100%; }
       }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
@@ -472,11 +511,14 @@
     <a class="skip-link" href="#main">Saltar al contenido</a>
     <header class="topbar">
       <a class="brand" href="#inicio" id="brandHome" aria-label="Col360, inicio">
-        <img
-          src="https://media.discordapp.net/attachments/1471727705249812695/1552846197625192569/imagen_2026-09-22_202137217-removebg-preview.png?ex=6ab71838&is=6ab5c6b8&hm=30181fd5240c1b2cf89495e094bb6a605b7876898737809b8950397984dd7fb9&=&format=webp&quality=lossless"
-          alt=""
-          class="brand-logo"
-        />
+        <svg class="brand-logo" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 3 43 11v13c0 11-7.5 18-19 22C12.5 42 5 35 5 24V11z" fill="#1649a5" />
+          <path d="M11 16h26v5H11z" fill="#fcd116" />
+          <path d="M11 21h26v5H11z" fill="#ce1126" />
+          <path d="M11 26h26v5H11z" fill="#fff" />
+          <path d="M11 31h26v4H11z" fill="#fcd116" />
+          <path d="M24 3 43 11v13c0 11-7.5 18-19 22C12.5 42 5 35 5 24V11z" fill="none" stroke="#fff" stroke-width="2" />
+        </svg>
         <span>Col360</span>
       </a>
       <nav class="nav-links" aria-label="Navegación principal">
@@ -565,7 +607,7 @@
             <div class="cta-panel">
               <div>
                 <h2>¿Necesitas una mano?</h2>
-                <p>Conoce el Agente Col360 IA y prueba solicitudes de trámites en modo demostración.</p>
+                <p>Consulta temas públicos con Gemini y revisa una previsualización antes de aprobar cualquier solicitud.</p>
               </div>
               <button class="button light" type="button" data-open-agent>Abrir Agente IA</button>
             </div>
@@ -624,17 +666,21 @@
     </button>
     <aside class="agent-panel" id="agentPanel" aria-label="Agente Col360 IA" hidden>
       <div class="agent-header">
-        <div><strong>Agente Col360 IA</strong><small>Asistente de trámites, modo demostración</small></div>
-        <button class="icon-button" id="agentClose" type="button" aria-label="Cerrar agente">×</button>
+        <div><strong>Agente Col360 IA</strong><small id="agentKeyStatus">Necesitas una API Key para comenzar</small></div>
+        <div class="agent-header-actions">
+          <button class="api-key-button" id="apiKeyOpen" type="button">🔑 API Key</button>
+          <button class="icon-button" id="agentClose" type="button" aria-label="Cerrar agente">×</button>
+        </div>
       </div>
       <div class="agent-log" id="agentLog" role="log" aria-live="polite">
-        <div class="chat-message">¡Hola! Puedo ayudarte a organizar una cita o un trámite. Prueba una orden rápida o cuéntame qué necesitas.</div>
+        <div class="chat-message">¡Hola! Puedo responder preguntas y ayudarte a preparar una cita o trámite con Gemini. Configura tu API Key para comenzar.</div>
       </div>
       <div class="quick-orders" aria-label="Órdenes rápidas">
         <button type="button" data-prompt="Agéndame una cita médica general mañana a las 9 am">Cita médica</button>
         <button type="button" data-prompt="Quiero sacar cita en la Registraduría para cédula">Cita Registraduría</button>
         <button type="button" data-prompt="Necesito certificado de impuestos">Certificado DIAN</button>
       </div>
+      <div class="agent-notice">Tus mensajes se envían a Google Gemini. No incluyas datos personales sensibles. La vista previa no envía trámites a entidades.</div>
       <form class="agent-form" id="agentForm">
         <input id="agentInput" aria-label="Escribe una solicitud" placeholder="Escribe lo que necesitas..." autocomplete="off" />
         <button type="submit" aria-label="Enviar solicitud">➤</button>
@@ -645,11 +691,14 @@
       <form class="login-card" id="loginForm" novalidate>
         <button class="close-login" type="button" id="loginClose" aria-label="Cerrar inicio de sesión">×</button>
         <div class="brand">
-          <img
-            src="https://media.discordapp.net/attachments/1471727705249812695/1552846197625192569/imagen_2026-09-22_202137217-removebg-preview.png?ex=6ab71838&is=6ab5c6b8&hm=30181fd5240c1b2cf89495e094bb6a605b7876898737809b8950397984dd7fb9&=&format=webp&quality=lossless"
-            alt=""
-            class="brand-logo"
-          />
+          <svg class="brand-logo" viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M24 3 43 11v13c0 11-7.5 18-19 22C12.5 42 5 35 5 24V11z" fill="#1649a5" />
+            <path d="M11 16h26v5H11z" fill="#fcd116" />
+            <path d="M11 21h26v5H11z" fill="#ce1126" />
+            <path d="M11 26h26v5H11z" fill="#fff" />
+            <path d="M11 31h26v4H11z" fill="#fcd116" />
+            <path d="M24 3 43 11v13c0 11-7.5 18-19 22C12.5 42 5 35 5 24V11z" fill="none" stroke="#fff" stroke-width="2" />
+          </svg>
           <span>Col360</span>
         </div>
         <h2 id="loginTitle">Inicia sesión con tu correo</h2>
@@ -684,27 +733,84 @@
     </div>
     <div class="toast" id="codeToast" role="status" aria-live="polite" hidden></div>
 
+    <div class="login-overlay" id="apiKeyOverlay" role="dialog" aria-modal="true" aria-labelledby="apiKeyTitle" hidden>
+      <section class="api-key-card">
+        <h2 id="apiKeyTitle">Conectar con Gemini</h2>
+        <p>Usa tu propia clave de Google AI Studio. Se guarda en este navegador y se envía directamente a Google. Al ser una integración frontal, quien use este navegador podría acceder a la clave; restríngela por API y dominio en Google Cloud. No la uses en equipos compartidos. Las cuotas y cargos dependen de Google.</p>
+        <p><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Obtener una API Key en Google AI Studio ↗</a></p>
+        <label class="field-label" for="geminiApiKey">API Key de Gemini</label>
+        <input class="form-control" id="geminiApiKey" type="password" autocomplete="off" placeholder="Pega aquí tu API Key" />
+        <p class="key-status" id="keyStatus" role="status"></p>
+        <p class="login-error" id="keyError" role="alert"></p>
+        <div class="api-key-actions">
+          <button class="button danger small" id="apiKeyClear" type="button">Eliminar clave</button>
+          <div style="display: flex; gap: 8px">
+            <button class="button secondary small" id="apiKeyClose" type="button">Cerrar</button>
+            <button class="button small" id="apiKeySave" type="button">Guardar y conectar</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="login-overlay" id="actionOverlay" role="dialog" aria-modal="true" aria-labelledby="actionTitle" hidden>
+      <section class="action-card">
+        <div class="action-head">
+          <div>
+            <h2 id="actionTitle">Agente en Acción - Previsualización de Radicado</h2>
+            <p>Revisa y edita los datos antes de aprobar. <a id="previewPortal" href="https://www.gov.co" target="_blank" rel="noopener noreferrer">Ver portal oficial ↗</a></p>
+          </div>
+          <button class="close-login" id="actionClose" type="button" aria-label="Cerrar previsualización">×</button>
+        </div>
+        <ol class="action-steps" id="actionSteps">
+          <li data-step="0"><span>1</span>Autenticando usuario único Col360</li>
+          <li data-step="1"><span>2</span>Conectando con entidad (simulación local)</li>
+          <li data-step="2"><span>3</span>Diligenciando campos</li>
+          <li data-step="3"><span>4</span>PAUSADO: Esperando aprobación del usuario antes de enviar</li>
+        </ol>
+        <p class="action-status" id="actionStatus" role="status">Preparando previsualización…</p>
+        <div class="action-fields">
+          <label class="field-label" for="previewEntity">Entidad
+            <input class="form-control" id="previewEntity" required />
+          </label>
+          <label class="field-label" for="previewType">Tipo de trámite
+            <input class="form-control" id="previewType" required />
+          </label>
+          <label class="field-label" for="previewCity">Ciudad
+            <input class="form-control" id="previewCity" required />
+          </label>
+          <label class="field-label" for="previewDate">Fecha
+            <input class="form-control" id="previewDate" required />
+          </label>
+          <label class="field-label" for="previewTime">Hora
+            <input class="form-control" id="previewTime" required />
+          </label>
+          <label class="field-label wide" for="previewObservations">Observaciones
+            <textarea class="form-control" id="previewObservations"></textarea>
+          </label>
+        </div>
+        <p class="action-disclaimer">Modo de prueba: esta página no se conecta ni envía datos a los portales de las entidades. Al confirmar, solo se guardará un radicado demostrativo en “Mis citas y trámites agendados”.</p>
+        <div class="action-buttons">
+          <button class="button secondary" id="actionStop" type="button">Detener / Editar</button>
+          <button class="button" id="actionConfirm" type="button" disabled>Confirmar y enviar definitivamente</button>
+        </div>
+      </section>
+    </div>
+
     <script>
       "use strict";
+      const svgIcon = (color, shapes) => `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="2" y="2" width="44" height="44" rx="14" fill="#f1f5fc"/><g fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${shapes}</g></svg>`
+      )}`;
       const ICONS = {
-        salud:
-          "https://media.discordapp.net/attachments/1471727705249812695/1552663762358501446/image.png?ex=6ab66e50&is=6ab51cd0&hm=4367cc786a266c8306954a4c5082ec773f082f95360c79bdbd584afe4146997f&=&format=webp&quality=lossless&width=1024&height=1024",
-        transporte:
-          "https://media.discordapp.net/attachments/1471727705249812695/1552847156493156493/image.png?ex=6ab7191c&is=6ab5c79c&hm=53f7b320616b203bc99d81f42b8f41e02539cdecdd36516561c1b85b160530d1&=&format=webp&quality=lossless",
-        registraduria:
-          "https://media.discordapp.net/attachments/1517422026523021372/1552869703645397063/image_4.png?ex=6ab72e1c&is=6ab5dc9c&hm=1cd13b8c1580db0f5f9421aa7508b9d6395fe22ea5e379c18e4ba4460516d601&=&format=webp&quality=lossless",
-        educacion:
-          "https://media.discordapp.net/attachments/1471727705249812695/1552847228630990878/image_2.png?ex=6ab7192d&is=6ab5c7ad&hm=323fa6b2b8e4086ad5d50c8f9eef0b0457f29722799088c08dfd49dd335e49c4&=&format=webp&quality=lossless",
-        hogar:
-          "https://cdn.discordapp.com/attachments/1471727705249812695/1552847530855760025/l8QgAAAAZJREFUAwB2JCzpEbOpwAAAABJRU5ErkJggg.png?ex=6ab71975&is=6ab5c7f5&hm=b7e303f8a06474e5256bfcf5c6e60f515dc803d7d5ee01dc01c0a534cfd11238&",
-        laboral:
-          "https://media.discordapp.net/attachments/1471727705249812695/1552847869416054804/descargar.jpg?ex=6ab719c6&is=6ab5c846&hm=eef427b9efd4cd59a14847e586c44523e155a36e2ba5d40b799a92a29900d76e&=&format=webp",
-        certificados:
-          "https://media.discordapp.net/attachments/1517422026523021372/1552869964875042898/image_5.png?ex=6ab72e5a&is=6ab5dcda&hm=31ff337eab30bfaac8afecd744811d44aa611905d61f93be707d4b26692b255f&=&format=webp&quality=lossless",
-        ingresos:
-          "https://media.discordapp.net/attachments/1517422026523021372/1552870106806226974/5383-removebg-preview.png?ex=6ab72e7c&is=6ab5dcfc&hm=214bd1cf517b2535a7993d465e12bee9a2e99438f6c8d4e4ad53854ae18c4166&=&format=webp&quality=lossless",
-        plus:
-          "https://media.discordapp.net/attachments/1517422026523021372/1552870213475893248/image_6.png?ex=6ab72e95&is=6ab5dd15&hm=2948cf851e639d2ad36ff9b0d8751ef5bc5e05b1941308146dc087cc867deff1&=&format=webp&quality=lossless",
+        salud: svgIcon("#c43d50", '<path d="M24 39S8 29 8 18a9 9 0 0 1 16-6 9 9 0 0 1 16 6c0 11-16 21-16 21Z"/><path d="M24 17v14M17 24h14"/>'),
+        transporte: svgIcon("#1760a8", '<rect x="9" y="7" width="30" height="31" rx="5"/><path d="M9 22h30M15 14h5m8 0h5M15 30h1m16 0h1M15 38v3m18-3v3"/>'),
+        registraduria: svgIcon("#8153a5", '<rect x="6" y="10" width="36" height="28" rx="4"/><circle cx="17" cy="21" r="5"/><path d="M9 33c1.8-4 4.5-6 8-6s6.2 2 8 6m5-12h7m-7 6h7"/>'),
+        educacion: svgIcon("#287a66", '<path d="M24 12c-6-4-12-4-17-2v27c6-2 12-2 17 2 5-4 11-4 17-2V10c-5-2-11-2-17 2Z"/><path d="M24 12v27m-11-21h5m-5 7h5m12-7h5m-5 7h5"/>'),
+        hogar: svgIcon("#c17c26", '<path d="m6 22 18-15 18 15M11 20v20h26V20M20 40V27h8v13"/><path d="M33 8h5v9"/>'),
+        laboral: svgIcon("#4267a4", '<rect x="6" y="15" width="36" height="26" rx="4"/><path d="M17 15v-5h14v5M6 25h36m-23 0v5h10v-5"/>'),
+        certificados: svgIcon("#267d78", '<path d="M13 6h16l8 8v28H13z"/><path d="M29 6v9h8m-18 6h12m-12 6h12m-12 7 4 4 8-9"/>'),
+        ingresos: svgIcon("#2b6489", '<rect x="9" y="5" width="30" height="38" rx="4"/><path d="M15 12h18m-18 7h5m7 0h5m-17 7h5m7 0h5m-17 7h5m7 0h5"/>'),
+        plus: svgIcon("#5c6390", '<circle cx="24" cy="24" r="17"/><path d="M24 15v18m-9-9h18m-17-13 3 3m10 14 3 3"/>'),
       };
 
       const services = {
@@ -803,13 +909,22 @@
       ];
       const newsTopics = ["Todos", "Ciudad", "Salud", "Economía", "Trámites"];
       const cities = ["Bogotá", "Medellín", "Cali", "Barranquilla", "Cartagena", "Bucaramanga", "Pereira", "Santa Marta", "Manizales", "Cúcuta"];
+      const GEMINI_KEY_STORAGE = "col360-gemini-api-key";
+      const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
       const state = {
         user: null,
         otp: "",
         otpExpiresAt: 0,
-        agentPending: "",
         newsTopic: "Todos",
         manualCityChoice: false,
+        geminiKey: "",
+        geminiHistory: [],
+        pendingPrompt: "",
+        pendingPreview: null,
+        previewToken: 0,
+        previewPaused: false,
+        agentBusy: false,
+        agentAbortController: null,
       };
 
       const $ = (selector, root) => (root || document).querySelector(selector);
@@ -851,7 +966,7 @@
           return;
         }
         $("#loginOverlay").hidden = false;
-        document.body.classList.add("modal-open");
+        syncModalState();
         $("#loginError").textContent = "";
         $("#userEmail").focus();
         requestLocation();
@@ -859,7 +974,7 @@
 
       function closeLogin() {
         $("#loginOverlay").hidden = true;
-        document.body.classList.remove("modal-open");
+        syncModalState();
       }
 
       function addCityOption(city) {
@@ -969,13 +1084,22 @@
         closeLogin();
         showView();
         window.scrollTo({ top: 0, behavior: "smooth" });
+        if (state.pendingPreview) {
+          const pending = state.pendingPreview;
+          if (!pending.ciudad) pending.ciudad = state.user.city;
+          state.pendingPreview = null;
+          startActionPreview(pending);
+        }
       }
 
       function logout() {
+        if (state.agentAbortController) state.agentAbortController.abort();
         state.user = null;
         state.otp = "";
-        state.agentPending = "";
         state.manualCityChoice = false;
+        state.geminiHistory = [];
+        state.pendingPrompt = "";
+        state.pendingPreview = null;
         sessionStorage.removeItem("col360-session");
         sessionStorage.removeItem("col360-appointments");
         $("#userEmail").value = "";
@@ -985,6 +1109,7 @@
         $("#serviceSearch").value = "";
         $("#agentPanel").hidden = true;
         $("#agentFab").setAttribute("aria-expanded", "false");
+        $("#agentLog").innerHTML = `<div class="chat-message">¡Hola! Puedo responder preguntas y ayudarte a preparar una cita o trámite con Gemini. Configura tu API Key para comenzar.</div>`;
         showView();
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -1080,6 +1205,7 @@
             <span><strong>Fecha:</strong> ${escapeHTML(item.date)}</span>
             <span><strong>Hora:</strong> ${escapeHTML(item.time)}</span>
             <span><strong>Tipo:</strong> ${escapeHTML(item.kind)}</span>
+            <span><strong>Observaciones:</strong> ${escapeHTML(item.observations || "Sin observaciones")}</span>
           </div>
           <div class="appointment-actions">
             <button type="button" class="button subtle small" data-download="${escapeHTML(item.id)}">Descargar resumen</button>
@@ -1088,111 +1214,337 @@
         </article>`).join("");
       }
 
-      function formatDate(date) {
-        return new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "long", year: "numeric" }).format(date);
+      function syncModalState() {
+        const modalOpen = !$("#loginOverlay").hidden || !$("#apiKeyOverlay").hidden || !$("#actionOverlay").hidden;
+        document.body.classList.toggle("modal-open", modalOpen);
       }
 
-      function parseDate(text) {
-        const lower = text.toLocaleLowerCase("es");
-        const date = new Date();
-        if (/\bpasado mañana\b/.test(lower)) {
-          date.setDate(date.getDate() + 2);
-          return formatDate(date);
+      function updateApiKeyStatus() {
+        const configured = Boolean(state.geminiKey);
+        $("#agentKeyStatus").textContent = configured ? "API Key configurada · se valida al enviar" : "Necesitas una API Key para comenzar";
+        $("#apiKeyOpen").setAttribute("aria-label", configured ? "Cambiar API Key" : "Configurar API Key");
+        $("#keyStatus").textContent = configured ? "Hay una clave guardada en este navegador." : "";
+      }
+
+      function openApiKeyDialog() {
+        $("#keyError").textContent = "";
+        $("#geminiApiKey").value = "";
+        $("#apiKeyOverlay").hidden = false;
+        syncModalState();
+        $("#geminiApiKey").focus();
+      }
+
+      function closeApiKeyDialog() {
+        $("#apiKeyOverlay").hidden = true;
+        syncModalState();
+      }
+
+      function saveApiKey() {
+        const key = $("#geminiApiKey").value.trim();
+        if (!key || /[\r\n]/.test(key)) {
+          $("#keyError").textContent = "Pega una API Key válida de Google AI Studio.";
+          $("#geminiApiKey").focus();
+          return;
         }
-        if (/\bmañana\b/.test(lower)) {
-          date.setDate(date.getDate() + 1);
-          return formatDate(date);
+        try {
+          localStorage.setItem(GEMINI_KEY_STORAGE, key);
+        } catch (error) {
+          $("#keyError").textContent = "El navegador no permitió guardar la clave. Revisa la configuración de almacenamiento.";
+          console.error("No se pudo guardar la API Key de Gemini.", error);
+          return;
         }
-        if (/\bhoy\b/.test(lower)) return formatDate(date);
-        const numeric = lower.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
-        if (numeric) {
-          const year = numeric[3] ? Number(numeric[3].length === 2 ? `20${numeric[3]}` : numeric[3]) : date.getFullYear();
-          const parsed = new Date(year, Number(numeric[2]) - 1, Number(numeric[1]));
-          if (parsed.getFullYear() === year && parsed.getMonth() === Number(numeric[2]) - 1 && parsed.getDate() === Number(numeric[1])) return formatDate(parsed);
+        state.geminiKey = key;
+        updateApiKeyStatus();
+        closeApiKeyDialog();
+        if (state.pendingPrompt) {
+          const prompt = state.pendingPrompt;
+          state.pendingPrompt = "";
+          sendAgentMessage(prompt, true);
         }
-        return "";
       }
 
-      function parseTime(text) {
-        const lower = text.toLocaleLowerCase("es");
-        const time24 = lower.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-        if (time24) return `${String(Number(time24[1])).padStart(2, "0")}:${time24[2]}`;
-        const match = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)\b/) ||
-          lower.match(/\b(?:a las|las)\s+(\d{1,2})(?::(\d{2}))?\b/);
-        if (!match) return "";
-        let hours = Number(match[1]);
-        const minutes = match[2] || "00";
-        const meridiem = match[3] ? match[3].replace(/\s|\./g, "") : "";
-        if (hours > 23 || Number(minutes) > 59) return "";
-        if (meridiem.startsWith("p") && hours < 12) hours += 12;
-        if (meridiem.startsWith("a") && hours === 12) hours = 0;
-        return `${String(hours).padStart(2, "0")}:${minutes}`;
+      function clearApiKey() {
+        try {
+          localStorage.removeItem(GEMINI_KEY_STORAGE);
+        } catch (error) {
+          $("#keyError").textContent = "El navegador no permitió eliminar la clave.";
+          console.error("No se pudo eliminar la API Key de Gemini.", error);
+          return;
+        }
+        state.geminiKey = "";
+        updateApiKeyStatus();
+        $("#geminiApiKey").value = "";
       }
 
-      function detectRequest(text) {
-        const lower = text.toLocaleLowerCase("es");
-        if (/registradur[ií]a|c[eé]dula|identidad/.test(lower)) return { entity: "Registraduría", kind: "Cita o trámite de identificación", appointment: /cita|agend/.test(lower) };
-        if (/dian|impuesto|tribut|renta|certificado/.test(lower)) return { entity: "DIAN / GOV.CO", kind: "Consulta de certificado o trámite tributario", appointment: /cita|agend/.test(lower) };
-        if (/salud|m[eé]dic|doctor|eps|cita/.test(lower)) return { entity: "Servicios de Salud", kind: "Cita médica general", appointment: /cita|agend|m[eé]dic|doctor/.test(lower) };
-        return null;
-      }
-
-      function appendMessage(text, sender) {
+      function appendMessage(text, sender, isError) {
         const message = document.createElement("div");
         message.className = `chat-message${sender === "user" ? " user" : ""}`;
+        if (isError) message.classList.add("error");
         message.textContent = text;
         $("#agentLog").append(message);
         $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
       }
 
-      function handleAgentRequest(text) {
-        const original = text.trim();
-        if (!original) return;
-        appendMessage(original, "user");
-        if (!state.user) {
-          state.agentPending = original;
-          appendMessage("Para guardar solicitudes en “Mis citas y trámites agendados”, inicia sesión primero. Tu solicitud quedará en esta conversación mientras continúas.", "agent");
-          return;
+      function systemInstruction() {
+        const city = state.user ? state.user.city : "no conocida; pregúntala si hace falta";
+        return `Eres el asistente de IA de Col360 para Colombia. Responde en español claro y amable sobre servicios públicos y trámites; no afirmes representar al Gobierno ni a las entidades. No inventes requisitos, fechas, costos ni disponibilidad; si no estás seguro, dilo y recomienda verificar en el portal oficial. No digas que una cita quedó agendada ni que un trámite fue enviado o aprobado: Col360 solo prepara una vista previa local. No solicites números de documento, contraseñas ni datos sensibles.
+
+La ciudad seleccionada en Col360 es: ${city}. Úsala como ciudad si el usuario no indicó otra.
+
+Devuelve exclusivamente un objeto JSON con esta forma exacta:
+{"respuesta":"texto conversacional","agendamiento":{"solicitud":false,"listo_para_previsualizar":false,"requiere_cita":false,"entidad":"","tipo_tramite":"","ciudad":"","fecha":"","hora":"","observaciones":""}}
+
+Si el usuario solicita claramente agendar una cita o iniciar un trámite, establece solicitud=true y extrae entidad, tipo_tramite, ciudad, fecha, hora y observaciones. Para una cita, si falta ciudad, fecha o hora, deja ese campo vacío, listo_para_previsualizar=false y pregunta por el dato faltante en respuesta. Para un trámite que no requiere cita, usa "No aplica" en fecha u hora que no correspondan. Establece listo_para_previsualizar=true solo cuando entidad, tipo_tramite, ciudad, fecha y hora estén completos; usa "Sin observaciones" si no hay ninguna. Si solo pregunta información y no solicita acción, solicitud=false y deja los campos vacíos.`;
+      }
+
+      function normalizeGeminiResult(value) {
+        if (!value || typeof value.respuesta !== "string" || !value.agendamiento || typeof value.agendamiento !== "object") {
+          throw new Error("Gemini devolvió una respuesta con una estructura inesperada.");
         }
-        const combined = state.agentPending ? `${state.agentPending} ${original}` : original;
-        const request = detectRequest(combined);
-        if (!request) {
-          appendMessage("Puedo ayudarte con citas de salud, trámites de Registraduría o certificados/impuestos de DIAN. Cuéntame cuál necesitas.", "agent");
-          return;
-        }
-        const date = parseDate(combined);
-        const time = parseTime(combined);
-        if (request.appointment && !date) {
-          state.agentPending = combined;
-          appendMessage("¿Para qué fecha necesitas la cita? Puedes decir “mañana” o escribir una fecha como 20/11.", "agent");
-          return;
-        }
-        if (request.appointment && !time) {
-          state.agentPending = combined;
-          appendMessage("¿A qué hora prefieres la cita? Por ejemplo: 9 am o 14:30.", "agent");
-          return;
-        }
-        if (!state.user.city) {
-          state.agentPending = combined;
-          appendMessage("Antes de continuar, selecciona tu ciudad en el perfil para preparar la solicitud.", "agent");
-          return;
-        }
-        const item = {
-          id: `COL360-${String(Math.floor(1000 + Math.random() * 9000))}`,
-          entity: request.entity,
-          kind: request.kind,
-          city: state.user.city,
-          date: request.appointment ? date : formatDate(new Date()),
-          time: request.appointment ? time : "No aplica",
-          status: "Confirmado",
-          createdAt: new Date().toISOString(),
+        const source = value.agendamiento;
+        const textField = (field) => typeof source[field] === "string" ? source[field].trim() : "";
+        return {
+          respuesta: value.respuesta.trim(),
+          agendamiento: {
+            solicitud: source.solicitud === true,
+            listo: source.listo_para_previsualizar === true,
+            requiereCita: source.requiere_cita === true,
+            entidad: textField("entidad"),
+            tipo: textField("tipo_tramite"),
+            ciudad: textField("ciudad"),
+            fecha: textField("fecha"),
+            hora: textField("hora"),
+            observaciones: textField("observaciones"),
+          },
         };
-        const items = readAppointments();
-        items.unshift(item);
-        saveAppointments(items);
+      }
+
+      function setAgentBusy(busy) {
+        state.agentBusy = busy;
+        $("#agentInput").disabled = busy;
+        $("#agentForm button[type='submit']").disabled = busy;
+        $$(".quick-orders button").forEach((button) => { button.disabled = busy; });
+        $("#agentForm button[type='submit']").textContent = busy ? "…" : "➤";
+      }
+
+      async function sendAgentMessage(text, alreadyDisplayed) {
+        const prompt = text.trim();
+        if (!prompt || state.agentBusy) return;
+        if (!alreadyDisplayed) appendMessage(prompt, "user");
+        if (!state.geminiKey) {
+          state.pendingPrompt = prompt;
+          appendMessage("Para activar el agente, pega tu API Key de Google AI Studio en el botón “🔑 API Key”.", "agent");
+          openApiKeyDialog();
+          return;
+        }
+
+        const conversation = state.geminiHistory.length >= 20
+          ? state.geminiHistory.slice(-18)
+          : state.geminiHistory.slice();
+        conversation.push({ role: "user", parts: [{ text: prompt }] });
+        const controller = new AbortController();
+        state.agentAbortController = controller;
+        setAgentBusy(true);
+        try {
+          const response = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(state.geminiKey)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: controller.signal,
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemInstruction() }] },
+              contents: conversation,
+              generationConfig: {
+                temperature: 0.2,
+                responseMimeType: "application/json",
+                responseSchema: {
+                  type: "OBJECT",
+                  properties: {
+                    respuesta: { type: "STRING" },
+                    agendamiento: {
+                      type: "OBJECT",
+                      properties: {
+                        solicitud: { type: "BOOLEAN" },
+                        listo_para_previsualizar: { type: "BOOLEAN" },
+                        requiere_cita: { type: "BOOLEAN" },
+                        entidad: { type: "STRING" },
+                        tipo_tramite: { type: "STRING" },
+                        ciudad: { type: "STRING" },
+                        fecha: { type: "STRING" },
+                        hora: { type: "STRING" },
+                        observaciones: { type: "STRING" },
+                      },
+                      required: ["solicitud", "listo_para_previsualizar", "requiere_cita", "entidad", "tipo_tramite", "ciudad", "fecha", "hora", "observaciones"],
+                    },
+                  },
+                  required: ["respuesta", "agendamiento"],
+                },
+              },
+            }),
+          });
+          let payload;
+          try {
+            payload = await response.json();
+          } catch (error) {
+            throw new Error("Google devolvió una respuesta que no se pudo leer.");
+          }
+          if (!response.ok) {
+            const detail = payload && payload.error && payload.error.message;
+            throw new Error(detail || `La API de Gemini respondió con el estado ${response.status}.`);
+          }
+          const candidate = payload && payload.candidates && payload.candidates[0];
+          const parts = candidate && candidate.content && candidate.content.parts;
+          const responseText = Array.isArray(parts)
+            ? parts.map((part) => typeof part.text === "string" ? part.text : "").join("").trim()
+            : "";
+          if (!responseText) throw new Error("Gemini no devolvió contenido. Comprueba la clave y la cuota del modelo.");
+          let decoded;
+          try {
+            decoded = JSON.parse(responseText.replace(/^\s*```(?:json)?\s*|\s*```\s*$/gi, ""));
+          } catch (error) {
+            throw new Error("Gemini no devolvió el JSON estructurado esperado. Inténtalo de nuevo.");
+          }
+          const result = normalizeGeminiResult(decoded);
+          state.geminiHistory = conversation.concat([{ role: "model", parts: [{ text: responseText }] }]);
+          appendMessage(result.respuesta || "He revisado tu consulta.", "agent");
+          prepareActionPreview(result.agendamiento);
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            console.error("Error al consultar la API de Gemini.", error);
+            appendMessage(`No pudimos obtener respuesta de Gemini: ${error.message}`, "agent", true);
+          }
+        } finally {
+          if (state.agentAbortController === controller) state.agentAbortController = null;
+          setAgentBusy(false);
+          $("#agentInput").focus();
+        }
+      }
+
+      function prepareActionPreview(request) {
+        if (!request.solicitud) return;
+        if (!request.ciudad && state.user) request.ciudad = state.user.city;
+        const complete = request.entidad && request.tipo && request.ciudad && request.fecha && request.hora;
+        if (!request.listo || !complete) return;
+        state.pendingPreview = request;
+        if (!state.user) {
+          appendMessage("La solicitud está lista. Inicia sesión para personalizar tu ciudad y abrir la previsualización antes de confirmar.", "agent");
+          openLogin();
+          return;
+        }
+        state.pendingPreview = null;
+        startActionPreview(request);
+      }
+
+      function officialPortalFor(entity) {
+        const name = entity.toLocaleLowerCase("es");
+        if (name.includes("registradur")) return services.registraduria.url;
+        if (name.includes("salud") || name.includes("eps")) return services.salud.url;
+        if (name.includes("dian") || name.includes("tribut")) return services.ingresos.url;
+        return services.certificados.url;
+      }
+
+      function updateActionSteps(activeStep, paused) {
+        $$("#actionSteps li").forEach((step) => {
+          const index = Number(step.dataset.step);
+          step.classList.toggle("complete", index < activeStep || (paused && index < 3));
+          step.classList.toggle("active", index === activeStep && !paused);
+          step.classList.toggle("paused", index === 3 && paused);
+        });
+      }
+
+      async function animateActionPreview(token) {
+        const labels = [
+          "Autenticando usuario único Col360…",
+          "Preparando conexión con la entidad (simulación local)…",
+          "Diligenciando los campos de la previsualización…",
+          "PAUSADO: Esperando aprobación del usuario antes de enviar.",
+        ];
+        for (let step = 0; step < 4; step += 1) {
+          if (token !== state.previewToken) return;
+          updateActionSteps(step, false);
+          $("#actionStatus").textContent = labels[step];
+          await new Promise((resolve) => window.setTimeout(resolve, 650));
+        }
+        if (token !== state.previewToken) return;
+        state.previewPaused = true;
+        updateActionSteps(3, true);
+        $("#actionStatus").textContent = labels[3];
+        $("#actionConfirm").disabled = false;
+      }
+
+      function startActionPreview(request) {
+        $("#previewEntity").value = request.entidad;
+        $("#previewType").value = request.tipo;
+        $("#previewCity").value = request.ciudad;
+        $("#previewDate").value = request.fecha;
+        $("#previewTime").value = request.hora;
+        $("#previewObservations").value = request.observaciones || "Sin observaciones";
+        $("#previewPortal").href = officialPortalFor(request.entidad);
+        $("#actionOverlay").hidden = false;
+        syncModalState();
+        state.previewPaused = false;
+        $("#actionConfirm").disabled = true;
+        const token = ++state.previewToken;
+        animateActionPreview(token);
+      }
+
+      function stopActionPreview() {
+        state.previewToken += 1;
+        state.previewPaused = true;
+        updateActionSteps(3, true);
+        $("#actionStatus").textContent = "Proceso detenido. Edita los campos; el envío sigue pausado hasta que confirmes.";
+        $("#actionConfirm").disabled = false;
+        $("#previewEntity").focus();
+      }
+
+      function closeActionPreview() {
+        state.previewToken += 1;
+        state.previewPaused = false;
+        state.pendingPreview = null;
+        $("#actionOverlay").hidden = true;
+        syncModalState();
+      }
+
+      function confirmActionPreview() {
+        if (!state.previewPaused) return;
+        const item = {
+          entity: $("#previewEntity").value.trim(),
+          kind: $("#previewType").value.trim(),
+          city: $("#previewCity").value.trim(),
+          date: $("#previewDate").value.trim(),
+          time: $("#previewTime").value.trim(),
+          observations: $("#previewObservations").value.trim() || "Sin observaciones",
+        };
+        if (!item.entity || !item.kind || !item.city || !item.date || !item.time) {
+          $("#actionStatus").textContent = "Completa entidad, trámite, ciudad, fecha y hora antes de confirmar.";
+          return;
+        }
+        if (!state.user) {
+          state.pendingPreview = {
+            entidad: item.entity,
+            tipo: item.kind,
+            ciudad: item.city,
+            fecha: item.date,
+            hora: item.time,
+            observaciones: item.observations,
+          };
+          state.previewToken += 1;
+          $("#actionOverlay").hidden = true;
+          syncModalState();
+          openLogin();
+          appendMessage("Inicia sesión para guardar el radicado de prueba en tu tablero.", "agent");
+          return;
+        }
+        const random = new Uint32Array(1);
+        window.crypto.getRandomValues(random);
+        item.id = `COL360-${String(1000 + random[0] % 9000)}`;
+        item.status = "Confirmado · demo local";
+        item.createdAt = new Date().toISOString();
+        const appointments = readAppointments();
+        appointments.unshift(item);
+        saveAppointments(appointments);
         renderAppointments();
-        state.agentPending = "";
-        appendMessage(`Solicitud demostrativa organizada. Radicado ${item.id}; entidad: ${item.entity}; ciudad: ${item.city}; fecha: ${item.date}; hora: ${item.time}; estado: Confirmado. La cita o trámite NO se ha realizado ante la entidad: verifica disponibilidad y completa el proceso en su portal oficial.`, "agent");
+        closeActionPreview();
+        appendMessage(`Radicado demostrativo ${item.id} guardado en “Mis citas y trámites agendados”. No se envió a ${item.entity}; visita el portal oficial para completar el trámite.`, "agent");
       }
 
       function openAgent() {
@@ -1217,6 +1569,7 @@
           `Ciudad: ${item.city}`,
           `Fecha: ${item.date}`,
           `Hora: ${item.time}`,
+          `Observaciones: ${item.observations || "Sin observaciones"}`,
           `Estado: ${item.status}`,
           "",
           "Este resumen no confirma una cita o trámite ante la entidad. Consulta su portal oficial."
@@ -1248,9 +1601,24 @@
       $("#loginOverlay").addEventListener("click", (event) => {
         if (event.target === $("#loginOverlay")) closeLogin();
       });
+      $("#apiKeyOpen").addEventListener("click", openApiKeyDialog);
+      $("#apiKeyClose").addEventListener("click", closeApiKeyDialog);
+      $("#apiKeySave").addEventListener("click", saveApiKey);
+      $("#apiKeyClear").addEventListener("click", clearApiKey);
+      $("#apiKeyOverlay").addEventListener("click", (event) => {
+        if (event.target === $("#apiKeyOverlay")) closeApiKeyDialog();
+      });
+      $("#actionClose").addEventListener("click", closeActionPreview);
+      $("#actionOverlay").addEventListener("click", (event) => {
+        if (event.target === $("#actionOverlay")) closeActionPreview();
+      });
+      $("#actionStop").addEventListener("click", stopActionPreview);
+      $("#actionConfirm").addEventListener("click", confirmActionPreview);
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
           closeLogin();
+          closeApiKeyDialog();
+          closeActionPreview();
           closeAgent();
         }
       });
@@ -1287,10 +1655,10 @@
       $$("[data-open-agent]").forEach((button) => button.addEventListener("click", openAgent));
       $("#agentForm").addEventListener("submit", (event) => {
         event.preventDefault();
-        handleAgentRequest($("#agentInput").value);
+        sendAgentMessage($("#agentInput").value, false);
         $("#agentInput").value = "";
       });
-      $$(".quick-orders button").forEach((button) => button.addEventListener("click", () => handleAgentRequest(button.dataset.prompt)));
+      $$(".quick-orders button").forEach((button) => button.addEventListener("click", () => sendAgentMessage(button.dataset.prompt, false)));
       $("#appointmentsList").addEventListener("click", (event) => {
         const downloadButton = event.target.closest("[data-download]");
         const cancelButton = event.target.closest("[data-cancel]");
@@ -1307,6 +1675,12 @@
 
       renderLandingServices();
       renderNews();
+      try {
+        state.geminiKey = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
+      } catch (error) {
+        console.error("No se pudo leer la API Key guardada de Gemini.", error);
+      }
+      updateApiKeyStatus();
       try {
         const savedSession = JSON.parse(sessionStorage.getItem("col360-session") || "null");
         if (savedSession && typeof savedSession.email === "string" && typeof savedSession.city === "string") state.user = savedSession;
