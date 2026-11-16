@@ -480,6 +480,9 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
 
 app.post("/api/captcha", requireAgentToken, async (req, res) => {
   const { captcha } = req.body || {};
+  if (confirmationInProgress) {
+    return res.status(409).json({ error: "La confirmación ya está en curso." });
+  }
   const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
   if (!captchaText) return res.status(400).json({ error: "Escribe el código de la imagen." });
   if (!activeSession || !activeSession.isAdres || !activeSession.requiresCaptcha) {
@@ -535,10 +538,64 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
   }
   confirmationInProgress = true;
   const session = activeSession;
-  activeSession = null;
-  lastPreviewData = null;
+  if (!session.isAdres) {
+    activeSession = null;
+    lastPreviewData = null;
+  }
   try {
-    if (session.isAdres && captchaCode) {
+    if (session.isAdres) {
+      if (captchaCode) {
+        const captchaSelectors =
+          '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
+        let captchaField = session.page.locator(captchaSelectors).first();
+        if (await captchaField.count() === 0) {
+          captchaField = session.page.locator('input[type="text"]:visible').nth(1);
+        }
+        await captchaField.waitFor({ state: "visible", timeout: 1500 });
+        await captchaField.click({ timeout: 1500 });
+        await captchaField.fill(captchaCode, { timeout: 1500 });
+        await captchaField.evaluate((element) => {
+          element.dispatchEvent(new Event("input", { bubbles: true }));
+          element.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+      }
+
+      const browserContext = session.page.context();
+      const pagesBefore = browserContext.pages().length;
+      const popupPromise = session.page.waitForEvent("popup", { timeout: 5000 }).catch(() => null);
+      const consultaButton = session.page.locator("#btnConsultar:visible").first();
+      const submitButton = await consultaButton.count() > 0 ? consultaButton : session.submitButton;
+      let submitError = null;
+      if (submitButton) {
+        try {
+          await submitButton.click({ timeout: 2000 });
+        } catch (error) {
+          submitError = error;
+          console.warn("No se pudo pulsar Consultar en ADRES:", error.message);
+        }
+      } else {
+        submitError = new Error("No se encontró el botón Consultar en ADRES.");
+      }
+
+      const popupPage = await popupPromise;
+      await session.page.waitForTimeout(1000);
+      const allPages = browserContext.pages();
+      const resultPage = popupPage || (allPages.length > pagesBefore ? allPages[allPages.length - 1] : null);
+      if (resultPage) {
+        await resultPage.waitForLoadState("domcontentloaded").catch(() => {});
+        await resultPage.waitForTimeout(1500);
+        const screenshot = (await resultPage.screenshot({
+          type: "jpeg",
+          quality: 75,
+          fullPage: true,
+        })).toString("base64");
+        await session.browser.close();
+        activeSession = null;
+        lastPreviewData = null;
+        const radicado = `COL360-${Date.now().toString().slice(-6)}`;
+        return res.json({ ok: true, screenshot, radicado });
+      }
+
       const captchaSelectors =
         '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
       let captchaField = session.page.locator(captchaSelectors).first();
@@ -546,18 +603,26 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
         captchaField = session.page.locator('input[type="text"]:visible').nth(1);
       }
       await captchaField.waitFor({ state: "visible", timeout: 1500 });
-      await captchaField.click({ timeout: 1500 });
-      await captchaField.fill(captchaCode, { timeout: 1500 });
-      await captchaField.evaluate((element) => {
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
+      await captchaField.fill("");
+      session.requiresCaptcha = true;
+      const screenshot = (await session.page.screenshot({
+        type: "jpeg",
+        quality: 75,
+        fullPage: true,
+      })).toString("base64");
+      return res.json({
+        ok: false,
+        retryCaptcha: true,
+        type: "preview",
+        requiresCaptcha: true,
+        reply: "El código CAPTCHA era incorrecto. Escribe el nuevo código de la imagen y pulsa Aceptar y enviar.",
+        screenshot,
+        datos: lastPreviewData,
       });
     }
 
     let submitError = null;
-    const submitButton = session.isAdres
-      ? session.page.locator("#btnConsultar, input[type='submit'], input[value*='Consultar' i]").first()
-      : session.submitButton;
+    const submitButton = session.submitButton;
     if (submitButton) {
       try {
         await submitButton.click({ timeout: 2000 });
@@ -583,9 +648,13 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
     const radicado = `COL360-${Date.now().toString().slice(-6)}`;
     return res.json({ ok: true, screenshot, radicado });
   } catch (error) {
-    await session.browser.close().catch((closeError) => {
-      console.error("No se pudo cerrar Chromium tras fallar la confirmación:", closeError);
-    });
+    if (session.isAdres) {
+      activeSession = session;
+    } else {
+      await session.browser.close().catch((closeError) => {
+        console.error("No se pudo cerrar Chromium tras fallar la confirmación:", closeError);
+      });
+    }
     console.error("Error en /api/confirm:", error);
     return res.status(500).json({ error: error.message || "No fue posible confirmar el formulario." });
   } finally {

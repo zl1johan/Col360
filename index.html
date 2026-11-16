@@ -1519,6 +1519,40 @@
         $("#agentInput").focus();
       }
 
+      function renderCaptchaRetry(card, data) {
+        card.replaceChildren();
+        const image = document.createElement("img");
+        image.src = `data:image/jpeg;base64,${data.screenshot}`;
+        image.alt = "Captura actualizada del portal ADRES con un nuevo código de seguridad";
+        card.append(image);
+
+        const heading = document.createElement("h3");
+        heading.textContent = "El código CAPTCHA no fue aceptado";
+        card.append(heading);
+        const captchaLabel = document.createElement("label");
+        captchaLabel.className = "web-preview-captcha";
+        captchaLabel.htmlFor = "captcha-input";
+        captchaLabel.append(document.createTextNode("Escribe el nuevo código que ves en la imagen:"));
+        const captchaInput = document.createElement("input");
+        captchaInput.id = "captcha-input";
+        captchaInput.type = "text";
+        captchaInput.placeholder = "Escribe el código aquí...";
+        captchaInput.autocomplete = "off";
+        captchaLabel.append(captchaInput);
+        card.append(captchaLabel);
+
+        const actions = document.createElement("div");
+        actions.className = "web-preview-actions";
+        actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
+        card.append(actions);
+        const datos = data.datos || (state.pendingWebSubmission && state.pendingWebSubmission.datos);
+        state.pendingWebSubmission = { datos, card };
+        waitingForCaptcha = false;
+        state.awaitingApproval = true;
+        setAgentBusy(false);
+        $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
+      }
+
       async function confirmWebPreview(card, confirmButton) {
         const pending = state.pendingWebSubmission;
         if (!pending) return;
@@ -1545,6 +1579,17 @@
           const result = await serverRequest("/api/confirm", captchaInput
             ? { captcha: captchaValue, code: captchaValue }
             : {});
+          if (result.retryCaptcha === true || (result.requiresCaptcha === true && !result.ok)) {
+            if (typeof result.screenshot !== "string") {
+              throw new Error("El servidor no devolvió la nueva captura del CAPTCHA.");
+            }
+            renderCaptchaRetry(card, result);
+            if (typeof result.reply === "string") {
+              state.chatHistory.push({ role: "assistant", content: result.reply });
+              appendMessage(result.reply, "agent");
+            }
+            return;
+          }
           if (typeof result.screenshot === "string") {
             const image = card.querySelector("img");
             image.src = `data:image/jpeg;base64,${result.screenshot}`;
