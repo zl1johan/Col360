@@ -408,12 +408,11 @@
       .web-preview-card h3 { margin: 12px 0 8px; font-size: .95rem; }
       .web-preview-data { display: grid; gap: 4px; margin: 0 0 12px; color: var(--muted); font-size: .76rem; }
       .web-preview-data strong { color: var(--ink); }
-      .web-preview-captcha { display: grid; gap: 6px; margin: 0 0 10px; color: var(--ink); font-size: .8rem; font-weight: 700; }
-      .web-preview-captcha input { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #9aabc4; border-radius: 9px; background: #fff; font: inherit; }
+      .web-preview-captcha { display: grid; gap: 6px; margin: 10px 0; color: var(--ink); font-size: .85rem; font-weight: 700; }
+      .web-preview-captcha input { width: 100%; min-height: 46px; padding: 10px 12px; border: 2px solid #3971c6; border-radius: 9px; background: #fff; font: inherit; font-size: 1.15rem; letter-spacing: .08em; }
       .web-preview-actions { display: grid; gap: 8px; }
       .web-preview-actions .button { width: 100%; }
       .web-preview-final { margin-top: 10px; color: var(--green); font-size: .8rem; font-weight: 700; }
-      .web-preview-validation { margin: 0 0 8px; color: #8d2923; font-size: .8rem; font-weight: 700; }
       .login-overlay {
         position: fixed;
         z-index: 20;
@@ -686,7 +685,7 @@
         <button type="button" data-prompt="Necesito el certificado de antecedentes fiscales de Contraloría">Antecedentes fiscales</button>
         <button type="button" data-prompt="Necesito el certificado de antecedentes disciplinarios de Procuraduría">Antecedentes disciplinarios</button>
       </div>
-      <div class="agent-notice">El agente solo abre cuatro portales oficiales. No resuelve CAPTCHA; complétalo manualmente en Chrome antes de confirmar el envío.</div>
+      <div class="agent-notice">Cuando un portal pida código de imagen (como ADRES), escríbelo aquí mismo para que el agente lo rellene automáticamente.</div>
       <form class="agent-form" id="agentForm">
         <input id="agentInput" aria-label="Escribe una solicitud" placeholder="Escribe lo que necesitas..." autocomplete="off" />
         <button type="submit" aria-label="Enviar solicitud">➤</button>
@@ -1324,16 +1323,31 @@
 
       function setAgentBusy(busy) {
         state.agentBusy = busy;
-        const disabled = busy || state.awaitingApproval || !serverOnline;
+        const captchaPending = state.awaitingApproval && Boolean($("#captcha-code-input"));
+        const disabled = busy || (state.awaitingApproval && !captchaPending) || !serverOnline;
+        const quickOrdersDisabled = busy || state.awaitingApproval || !serverOnline;
         $("#agentInput").disabled = disabled;
         $("#agentForm button[type='submit']").disabled = disabled;
-        $$(".quick-orders button").forEach((button) => { button.disabled = disabled; });
+        $$(".quick-orders button").forEach((button) => { button.disabled = quickOrdersDisabled; });
         $("#agentForm button[type='submit']").textContent = busy ? "…" : "➤";
       }
 
       async function sendAgentMessage(text, alreadyDisplayed) {
         const prompt = text.trim();
-        if (!prompt || state.agentBusy || state.awaitingApproval) return;
+        if (!prompt || state.agentBusy) return;
+        if (state.awaitingApproval) {
+          const card = state.pendingWebSubmission && state.pendingWebSubmission.card;
+          const captchaInput = card && $("#captcha-code-input", card);
+          if (!captchaInput) return;
+          if (prompt.length > 12) {
+            appendMessage("Escribe únicamente el código de la imagen (máximo 12 caracteres).", "agent", true);
+            return;
+          }
+          appendMessage(prompt, "user");
+          captchaInput.value = prompt;
+          await confirmWebPreview(card);
+          return;
+        }
         if (!serverOnline) {
           appendMessage("El servidor local del estudiante está en reposo. Puedes solicitar su activación en este panel.", "agent", true);
           refreshServerHealth();
@@ -1391,6 +1405,22 @@
         image.alt = "Captura del portal oficial en Chrome, pausado antes de enviar";
         card.append(image);
 
+        const needsCaptcha = data.requiresCaptcha === true
+          || (data.datos && data.datos.url_portal && data.datos.url_portal.includes("adres.gov.co"));
+        if (needsCaptcha) {
+          const captchaLabel = document.createElement("label");
+          captchaLabel.className = "web-preview-captcha";
+          captchaLabel.htmlFor = "captcha-code-input";
+          captchaLabel.append(document.createTextNode("Escribe el código que ves en la imagen:"));
+          const captchaInput = document.createElement("input");
+          captchaInput.id = "captcha-code-input";
+          captchaInput.type = "text";
+          captchaInput.placeholder = "Ej: 7747";
+          captchaInput.autocomplete = "off";
+          captchaLabel.append(captchaInput);
+          card.append(captchaLabel);
+        }
+
         const heading = document.createElement("h3");
         heading.textContent = "Verifica los datos en el portal oficial";
         card.append(heading);
@@ -1410,22 +1440,6 @@
           summary.append(line);
         });
         card.append(summary);
-
-        const needsCaptcha = data.requiresCaptcha === true
-          || (data.datos && data.datos.url_portal && data.datos.url_portal.includes("adres.gov.co"));
-        if (needsCaptcha) {
-          const captchaLabel = document.createElement("label");
-          captchaLabel.className = "web-preview-captcha";
-          captchaLabel.htmlFor = "captcha-code-input";
-          captchaLabel.append(document.createTextNode("Código de seguridad (escribe los caracteres de la imagen):"));
-          const captchaInput = document.createElement("input");
-          captchaInput.id = "captcha-code-input";
-          captchaInput.type = "text";
-          captchaInput.placeholder = "Ej: 7747";
-          captchaInput.autocomplete = "off";
-          captchaLabel.append(captchaInput);
-          card.append(captchaLabel);
-        }
 
         const actions = document.createElement("div");
         actions.className = "web-preview-actions";
@@ -1449,18 +1463,11 @@
         const captchaInput = $("#captcha-code-input", card);
         const captchaValue = captchaInput ? captchaInput.value.trim() : "";
         if (captchaInput && !captchaValue) {
+          window.alert("Escribe el código de la imagen primero");
           captchaInput.focus();
-          let notice = card.querySelector(".web-preview-validation");
-          if (!notice) {
-            notice = document.createElement("p");
-            notice.className = "web-preview-validation";
-            card.insertBefore(notice, card.querySelector(".web-preview-actions"));
-          }
-          notice.textContent = "Escribe el código de la imagen antes de confirmar";
           return;
         }
-        const validationNotice = card.querySelector(".web-preview-validation");
-        if (validationNotice) validationNotice.remove();
+        setAgentBusy(true);
         const buttons = $$("[data-preview-action]", card);
         buttons.forEach((button) => { button.disabled = true; });
         let status = card.querySelector(".web-preview-final");

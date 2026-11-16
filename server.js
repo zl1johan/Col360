@@ -406,10 +406,16 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
           "SIMIT"
         );
       } else if (selectedPortal.tipo === "adres") {
-        documentFilled = await fillFirstVisibleText(page, args.documento, "ADRES");
+        try {
+          const documentField = page.locator("#txtNumDoc:visible, input[type='text']:visible").first();
+          await documentField.fill(String(args.documento), { timeout: 1500 });
+          documentFilled = true;
+        } catch (error) {
+          console.warn("No se pudo completar el documento en ADRES:", error.message);
+        }
         submitButton = await highlightSubmitButton(
           page,
-          'input[type="submit"], input[value*="Consultar" i]',
+          '#btnConsultar, input[type="submit"], input[value*="Consultar" i]',
           "ADRES"
         );
       } else if (selectedPortal.tipo === "contraloria") {
@@ -431,13 +437,20 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
       }
 
       const screenshot = (await page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
-      activeSession = { browser, page, submitButton };
+      activeSession = {
+        browser,
+        page,
+        submitButton,
+        requiresCaptcha: args.url_portal.includes("adres.gov.co"),
+      };
       return res.json({
         type: "preview",
         requiresCaptcha: args.url_portal.includes("adres.gov.co"),
-        reply: documentFilled
-          ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
-          : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
+        reply: args.url_portal.includes("adres.gov.co")
+          ? "Mira el código de la imagen de ADRES, escríbelo aquí abajo (o envíalo en el chat) y pulsa Aceptar y enviar."
+          : documentFilled
+            ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
+            : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
         screenshot,
         datos: args,
       });
@@ -469,7 +482,7 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
     const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
     if (captchaText) {
       const captchaSelectors =
-        'input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible, input[id*="Codigo" i]:visible';
+        '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
       let captchaField = session.page.locator(captchaSelectors).first();
       if (await captchaField.count() === 0) {
         captchaField = session.page.locator('input[type="text"]:visible').nth(1);
@@ -477,13 +490,20 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
       await captchaField.waitFor({ state: "visible", timeout: 1500 });
       await captchaField.click({ timeout: 1500 });
       await captchaField.fill(captchaText, { timeout: 1500 });
+      await captchaField.evaluate((element) => {
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      });
       await session.page.waitForTimeout(300);
     }
 
     let submitError = null;
-    if (session.submitButton) {
+    const submitButton = session.requiresCaptcha
+      ? session.page.locator("#btnConsultar, input[type='submit'], input[value*='Consultar' i]").first()
+      : session.submitButton;
+    if (submitButton) {
       try {
-        await session.submitButton.click({ timeout: 2000 });
+        await submitButton.click({ timeout: 2000 });
       } catch (error) {
         submitError = error;
         console.warn("No se pudo enviar la consulta desde el portal:", error.message);
