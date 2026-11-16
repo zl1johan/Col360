@@ -92,6 +92,7 @@ const tool = {
 };
 
 let activeSession = null;
+let lastPreviewData = null;
 let chatInProgress = false;
 let confirmationInProgress = false;
 const app = express();
@@ -407,7 +408,10 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
         );
       } else if (selectedPortal.tipo === "adres") {
         try {
-          const documentField = page.locator("#txtNumDoc:visible, input[type='text']:visible").first();
+          let documentField = page.locator("#txtNumDoc:visible").first();
+          if (await documentField.count() === 0) {
+            documentField = page.locator("input[type='text']:visible").first();
+          }
           await documentField.fill(String(args.documento), { timeout: 1500 });
           documentFilled = true;
         } catch (error) {
@@ -437,17 +441,20 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
       }
 
       const screenshot = (await page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
+      const isAdres = args.url_portal.includes("adres.gov.co");
       activeSession = {
         browser,
         page,
         submitButton,
-        requiresCaptcha: args.url_portal.includes("adres.gov.co"),
+        isAdres,
+        requiresCaptcha: isAdres,
       };
+      lastPreviewData = args;
       return res.json({
         type: "preview",
-        requiresCaptcha: args.url_portal.includes("adres.gov.co"),
-        reply: args.url_portal.includes("adres.gov.co")
-          ? "Mira el código de la imagen de ADRES, escríbelo aquí abajo (o envíalo en el chat) y pulsa Aceptar y enviar."
+        requiresCaptcha: isAdres,
+        reply: isAdres
+          ? "Escribe el código de la imagen para que lo rellene antes de confirmar."
           : documentFilled
             ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
             : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
@@ -471,34 +478,67 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
   }
 });
 
-app.post("/api/confirm", requireAgentToken, async (req, res) => {
+app.post("/api/captcha", requireAgentToken, async (req, res) => {
   const { captcha } = req.body || {};
+  const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
+  if (!captchaText) return res.status(400).json({ error: "Escribe el código de la imagen." });
+  if (!activeSession || !activeSession.isAdres || !activeSession.requiresCaptcha) {
+    return res.status(409).json({ error: "No hay una consulta ADRES esperando un código CAPTCHA." });
+  }
+
+  const session = activeSession;
+  try {
+    const captchaSelectors =
+      '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
+    let captchaField = session.page.locator(captchaSelectors).first();
+    if (await captchaField.count() === 0) {
+      captchaField = session.page.locator('input[type="text"]:visible').nth(1);
+    }
+    await captchaField.waitFor({ state: "visible", timeout: 1500 });
+    await captchaField.click({ timeout: 1500 });
+    await captchaField.fill(captchaText, { timeout: 1500 });
+    await captchaField.evaluate((element) => {
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    session.submitButton = await highlightSubmitButton(
+      session.page,
+      "#btnConsultar, input[type='submit'], input[value*='Consultar' i]",
+      "ADRES"
+    );
+    if (!session.submitButton) {
+      return res.status(409).json({ error: "No se encontró el botón Consultar en ADRES." });
+    }
+    await session.page.waitForTimeout(400);
+    const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 70 })).toString("base64");
+    session.requiresCaptcha = false;
+    return res.json({
+      type: "preview",
+      requiresCaptcha: false,
+      reply: "Código ingresado. Revisa en la captura que los datos y el código estén bien y pulsa Aceptar y enviar.",
+      screenshot,
+      datos: lastPreviewData,
+    });
+  } catch (error) {
+    console.error("Error al ingresar el código CAPTCHA de ADRES:", error);
+    return res.status(500).json({ error: error.message || "No fue posible ingresar el código CAPTCHA." });
+  }
+});
+
+app.post("/api/confirm", requireAgentToken, async (req, res) => {
   if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
   if (!activeSession) return res.status(409).json({ error: "No hay una previsualización activa para confirmar." });
+  if (activeSession.requiresCaptcha) {
+    return res.status(409).json({ error: "Primero ingresa el código CAPTCHA desde la previsualización." });
+  }
   confirmationInProgress = true;
   const session = activeSession;
   activeSession = null;
+  lastPreviewData = null;
   try {
-    const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
-    if (captchaText) {
-      const captchaSelectors =
-        '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible';
-      let captchaField = session.page.locator(captchaSelectors).first();
-      if (await captchaField.count() === 0) {
-        captchaField = session.page.locator('input[type="text"]:visible').nth(1);
-      }
-      await captchaField.waitFor({ state: "visible", timeout: 1500 });
-      await captchaField.click({ timeout: 1500 });
-      await captchaField.fill(captchaText, { timeout: 1500 });
-      await captchaField.evaluate((element) => {
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      await session.page.waitForTimeout(300);
-    }
-
     let submitError = null;
-    const submitButton = session.requiresCaptcha
+    const submitButton = session.isAdres
       ? session.page.locator("#btnConsultar, input[type='submit'], input[value*='Consultar' i]").first()
       : session.submitButton;
     if (submitButton) {
@@ -546,6 +586,7 @@ app.post("/api/cancel", requireAgentToken, async (req, res) => {
   if (activeSession) {
     const session = activeSession;
     activeSession = null;
+    lastPreviewData = null;
     try {
       await session.browser.close();
     } catch (error) {

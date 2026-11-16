@@ -408,8 +408,8 @@
       .web-preview-card h3 { margin: 12px 0 8px; font-size: .95rem; }
       .web-preview-data { display: grid; gap: 4px; margin: 0 0 12px; color: var(--muted); font-size: .76rem; }
       .web-preview-data strong { color: var(--ink); }
-      .web-preview-captcha { display: grid; gap: 6px; margin: 10px 0; color: var(--ink); font-size: .85rem; font-weight: 700; }
-      .web-preview-captcha input { width: 100%; min-height: 46px; padding: 10px 12px; border: 2px solid #3971c6; border-radius: 9px; background: #fff; font: inherit; font-size: 1.15rem; letter-spacing: .08em; }
+      .web-preview-captcha { position: relative; z-index: 20; display: grid; gap: 6px; margin: 10px 0; color: var(--ink); font-size: .85rem; font-weight: 700; pointer-events: auto; }
+      .web-preview-captcha input { width: 100%; min-height: 46px; padding: 10px; border: 2px solid #2563eb; border-radius: 8px; background: #fff; color: #111; font-family: inherit; font-size: 16px; pointer-events: auto; }
       .web-preview-actions { display: grid; gap: 8px; }
       .web-preview-actions .button { width: 100%; }
       .web-preview-final { margin-top: 10px; color: var(--green); font-size: .8rem; font-weight: 700; }
@@ -869,6 +869,7 @@
       let serverUrl = DEFAULT_SERVER_URL;
       let serverToken = DEFAULT_SERVER_TOKEN;
       let serverOnline = false;
+      let waitingForCaptcha = false;
 
       const $ = (selector, root) => (root || document).querySelector(selector);
       const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
@@ -1041,6 +1042,8 @@
         state.chatHistory = [];
         state.pendingWebSubmission = null;
         state.awaitingApproval = false;
+        waitingForCaptcha = false;
+        $("#agentInput").placeholder = "Escribe lo que necesitas...";
         sessionStorage.removeItem("col360-session");
         sessionStorage.removeItem("col360-appointments");
         $("#userEmail").value = "";
@@ -1323,10 +1326,14 @@
 
       function setAgentBusy(busy) {
         state.agentBusy = busy;
-        const captchaPending = state.awaitingApproval && Boolean($("#captcha-code-input"));
+        const captchaPending = waitingForCaptcha && Boolean($("#captcha-input"));
         const disabled = busy || (state.awaitingApproval && !captchaPending) || !serverOnline;
         const quickOrdersDisabled = busy || state.awaitingApproval || !serverOnline;
         $("#agentInput").disabled = disabled;
+        $("#agentInput").readOnly = false;
+        $("#agentInput").placeholder = waitingForCaptcha
+          ? "Escribe el código de la imagen aquí..."
+          : "Escribe lo que necesitas...";
         $("#agentForm button[type='submit']").disabled = disabled;
         $$(".quick-orders button").forEach((button) => { button.disabled = quickOrdersDisabled; });
         $("#agentForm button[type='submit']").textContent = busy ? "…" : "➤";
@@ -1335,19 +1342,19 @@
       async function sendAgentMessage(text, alreadyDisplayed) {
         const prompt = text.trim();
         if (!prompt || state.agentBusy) return;
-        if (state.awaitingApproval) {
+        if (waitingForCaptcha) {
           const card = state.pendingWebSubmission && state.pendingWebSubmission.card;
-          const captchaInput = card && $("#captcha-code-input", card);
+          const captchaInput = card && $("#captcha-input", card);
           if (!captchaInput) return;
           if (prompt.length > 12) {
             appendMessage("Escribe únicamente el código de la imagen (máximo 12 caracteres).", "agent", true);
             return;
           }
-          appendMessage(prompt, "user");
           captchaInput.value = prompt;
-          await confirmWebPreview(card);
+          await sendCaptchaCode(prompt, card);
           return;
         }
+        if (state.awaitingApproval) return;
         if (!serverOnline) {
           appendMessage("El servidor local del estudiante está en reposo. Puedes solicitar su activación en este panel.", "agent", true);
           refreshServerHealth();
@@ -1408,17 +1415,26 @@
         const needsCaptcha = data.requiresCaptcha === true
           || (data.datos && data.datos.url_portal && data.datos.url_portal.includes("adres.gov.co"));
         if (needsCaptcha) {
+          waitingForCaptcha = true;
           const captchaLabel = document.createElement("label");
           captchaLabel.className = "web-preview-captcha";
-          captchaLabel.htmlFor = "captcha-code-input";
+          captchaLabel.htmlFor = "captcha-input";
           captchaLabel.append(document.createTextNode("Escribe el código que ves en la imagen:"));
           const captchaInput = document.createElement("input");
-          captchaInput.id = "captcha-code-input";
+          captchaInput.id = "captcha-input";
           captchaInput.type = "text";
-          captchaInput.placeholder = "Ej: 7747";
+          captchaInput.placeholder = "Escribe el código aquí...";
           captchaInput.autocomplete = "off";
           captchaLabel.append(captchaInput);
           card.append(captchaLabel);
+          const sendCaptchaButton = document.createElement("button");
+          sendCaptchaButton.id = "send-captcha-btn";
+          sendCaptchaButton.className = "button";
+          sendCaptchaButton.type = "button";
+          sendCaptchaButton.textContent = "Enviar código";
+          card.append(sendCaptchaButton);
+        } else {
+          waitingForCaptcha = false;
         }
 
         const heading = document.createElement("h3");
@@ -1443,16 +1459,64 @@
 
         const actions = document.createElement("div");
         actions.className = "web-preview-actions";
-        actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
-        card.append(actions);
+        if (!needsCaptcha) {
+          actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
+          card.append(actions);
+        }
         $("#agentLog").append(card);
         $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
         return card;
       }
 
+      async function sendCaptchaCode(code, card) {
+        const captcha = String(code || "").trim();
+        if (!captcha) {
+          window.alert("Escribe el código de la imagen primero");
+          $("#captcha-input", card).focus();
+          return;
+        }
+        if (!waitingForCaptcha || state.agentBusy) return;
+        const sendButton = $("#send-captcha-btn", card);
+        if (sendButton) {
+          sendButton.disabled = true;
+          sendButton.textContent = "Enviando...";
+        }
+        setAgentBusy(true);
+        try {
+          const result = await serverRequest("/api/captcha", { captcha });
+          if (result.type !== "preview" || result.requiresCaptcha !== false || typeof result.screenshot !== "string") {
+            throw new Error("El servidor no devolvió la nueva captura del portal.");
+          }
+          const image = card.querySelector("img");
+          image.src = `data:image/jpeg;base64,${result.screenshot}`;
+          image.alt = "Captura actualizada del portal oficial con el código ingresado";
+          const captchaLabel = $(".web-preview-captcha", card);
+          if (captchaLabel) captchaLabel.remove();
+          if (sendButton) sendButton.remove();
+          const actions = document.createElement("div");
+          actions.className = "web-preview-actions";
+          actions.innerHTML = '<button class="button" type="button" data-preview-action="confirm">✅ Aceptar y enviar</button><button class="button danger" type="button" data-preview-action="cancel">❌ Cancelar</button>';
+          card.append(actions);
+          waitingForCaptcha = false;
+          state.chatHistory.push({ role: "assistant", content: result.reply });
+          appendMessage(result.reply, "agent");
+        } catch (error) {
+          console.error("No se pudo aplicar el código CAPTCHA en el portal.", error);
+          appendMessage(`No se pudo ingresar el código: ${error.message}`, "agent", true);
+          if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.textContent = "Enviar código";
+          }
+        } finally {
+          setAgentBusy(false);
+          $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
+        }
+      }
+
       function finishWebPreview() {
         state.pendingWebSubmission = null;
         state.awaitingApproval = false;
+        waitingForCaptcha = false;
         setAgentBusy(false);
         $("#agentInput").focus();
       }
@@ -1460,13 +1524,7 @@
       async function confirmWebPreview(card) {
         const pending = state.pendingWebSubmission;
         if (!pending) return;
-        const captchaInput = $("#captcha-code-input", card);
-        const captchaValue = captchaInput ? captchaInput.value.trim() : "";
-        if (captchaInput && !captchaValue) {
-          window.alert("Escribe el código de la imagen primero");
-          captchaInput.focus();
-          return;
-        }
+        if (waitingForCaptcha) return;
         setAgentBusy(true);
         const buttons = $$("[data-preview-action]", card);
         buttons.forEach((button) => { button.disabled = true; });
@@ -1478,10 +1536,7 @@
         }
         status.textContent = "Enviando la consulta y esperando la respuesta del portal…";
         try {
-          const result = await serverRequest(
-            "/api/confirm",
-            captchaInput ? { captcha: captchaValue } : {}
-          );
+          const result = await serverRequest("/api/confirm");
           if (typeof result.screenshot === "string") {
             const image = card.querySelector("img");
             image.src = `data:image/jpeg;base64,${result.screenshot}`;
@@ -1584,6 +1639,12 @@
       $("#serverStatus").addEventListener("dblclick", configureServer);
       $("#activationForm").addEventListener("submit", sendActivationNotification);
       $("#agentLog").addEventListener("click", (event) => {
+       const sendCaptchaButton = event.target.closest("#send-captcha-btn");
+       if (sendCaptchaButton && state.pendingWebSubmission) {
+         const card = sendCaptchaButton.closest(".web-preview-card");
+         sendCaptchaCode($("#captcha-input", card).value, card);
+         return;
+       }
         const button = event.target.closest("[data-preview-action]");
         if (!button || !state.pendingWebSubmission) return;
         const card = button.closest(".web-preview-card");
