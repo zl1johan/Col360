@@ -64,13 +64,13 @@ const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Atiendes EX
 1. SIMIT (Multas / Comparendos) -> entidad: "SIMIT - Federación Colombiana de Municipios", tramite: "Estado de Cuenta Comparendos", url_portal: "https://www.fcm.org.co/simit/#/home-public"
 2. ADRES (Salud / EPS) -> entidad: "ADRES - Ministerio de Salud", tramite: "Consulta de Afiliados BDUA", url_portal: "https://aplicaciones.adres.gov.co/bdua_internet/Pages/ConsultarAfiliadoWeb.aspx"
 3. Procuraduría (Antecedentes Disciplinarios) -> entidad: "Procuraduría General de la Nación", tramite: "Certificado de Antecedentes Disciplinarios", url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx"
-El ciudadano ya inició sesión y su perfil está registrado localmente. Nunca pidas nombre, cédula, teléfono ni correo. Si pide algo fuera de estos tres trámites, responde enumerando las opciones y NO llames a la herramienta. Para SIMIT usa la placa si aparece en la conversación; no pidas datos personales ya registrados. Llama a 'ejecutar_tramite_web' únicamente con la entidad, trámite y URL exactos. No resuelvas CAPTCHA automáticamente; deja la verificación para la persona usuaria y solo envía después de su confirmación explícita.`;
+El ciudadano ya inició sesión y su perfil está registrado localmente. Nunca pidas nombre, cédula ni correo. Si pide algo fuera de estos tres trámites, responde enumerando las opciones y NO llames a la herramienta. Para SIMIT usa la placa si aparece en la conversación; no pidas datos personales ya registrados. Llama a 'ejecutar_tramite_web' únicamente con la entidad, trámite y URL exactos. No resuelvas CAPTCHA automáticamente; deja la verificación para la persona usuaria y solo envía después de su confirmación explícita.`;
 
 const tool = {
   type: "function",
   function: {
     name: "ejecutar_tramite_web",
-    description: "Abre únicamente uno de los tres portales oficiales permitidos, completa el dato registrado y espera la confirmación humana.",
+    description: "Abre uno de los tres portales oficiales permitidos, completa el dato registrado y espera la confirmación humana.",
     parameters: {
       type: "object",
       properties: {
@@ -82,7 +82,7 @@ const tool = {
         tramite: {
           type: "string",
           enum: SUPPORTED_PORTALS.map((portal) => portal.tramite),
-          description: "Uno de los cuatro trámites oficiales permitidos.",
+          description: "Uno de los tres trámites oficiales permitidos.",
         },
         documento: { type: "string", description: "Número de documento o placa para la consulta." },
         url_portal: {
@@ -145,14 +145,11 @@ function normalizeProfile(body) {
   const cedula = typeof profile.cedula === "string" || typeof profile.cedula === "number"
     ? String(profile.cedula).replace(/\D/g, "").slice(0, 20)
     : "";
-  const telefono = typeof profile.telefono === "string" || typeof profile.telefono === "number"
-    ? String(profile.telefono).trim().slice(0, 30)
-    : "";
   const correo = typeof profile.correo === "string" ? profile.correo.trim().slice(0, 254).toLowerCase() : "";
-  if (!nombre || !/^\d{5,20}$/.test(cedula) || !telefono || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+  if (!nombre || !/^\d{5,20}$/.test(cedula) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
     return null;
   }
-  return { nombre, cedula, telefono, correo };
+  return { nombre, cedula, correo };
 }
 
 function getSessionId(req) {
@@ -193,7 +190,7 @@ function requireQueueFirst(req, res, next) {
 
 app.post("/api/request-otp", async (req, res) => {
   const profile = normalizeProfile(req.body);
-  if (!profile) return res.status(400).json({ ok: false, error: "Completa nombre, cédula, teléfono y un correo válido." });
+  if (!profile) return res.status(400).json({ ok: false, message: "Completa nombre, cédula y un correo válido." });
   const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
   pendingOtps.set(profile.cedula, {
     code,
@@ -201,24 +198,34 @@ app.post("/api/request-otp", async (req, res) => {
     profile,
   });
   try {
-    await mailTransport.sendMail({
-      from: `"Col360" <${process.env.SMTP_USER}>`,
+    const info = await mailTransport.sendMail({
+      from: `"Col360" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
       to: profile.correo,
       subject: "Tu código de acceso Col360",
       text: `Tu código de acceso Col360 es ${code}. Vence en 10 minutos.`,
+      html: `<!doctype html><html lang="es"><body style="margin:0;padding:24px;background:#f4f7fb;font-family:Arial,sans-serif;color:#17243b"><main style="max-width:520px;margin:0 auto;padding:28px;border:1px solid #e1e7f0;border-radius:16px;background:#fff"><h1 style="margin:0 0 12px;color:#102f67;font-size:24px">Tu código de acceso Col360</h1><p style="margin:0 0 18px">Ingresa este código para iniciar sesión. Vence en 10 minutos.</p><p style="margin:0;padding:16px;border-radius:12px;background:#edf4ff;color:#1649a5;text-align:center;font-size:36px;font-weight:700;letter-spacing:8px">${code}</p></main></body></html>`,
     });
+    const accepted = Array.isArray(info.accepted)
+      && info.accepted.some((address) => String(address).toLowerCase() === profile.correo);
+    if (!accepted) throw new Error(info.response || "Brevo rechazó la dirección de correo.");
+    console.log("Respuesta SMTP Brevo:", info.messageId, info.accepted);
   } catch (error) {
     pendingOtps.delete(profile.cedula);
-    console.error("No se pudo enviar el código OTP:", error.message);
-    return res.status(503).json({ ok: false, error: "No fue posible enviar el correo. Verifica la configuración SMTP e inténtalo de nuevo." });
+    console.error("Error real Brevo:", error);
+    return res.status(500).json({ ok: false, message: `No se pudo enviar el correo: ${error.message}` });
   }
-  fetch("https://ntfy.sh/col360-johan-2026", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain; charset=utf-8", Title: "Solicitud de acceso Col360" },
-    body: "Se solicitó un código de acceso a Col360.",
-    signal: AbortSignal.timeout(5000),
-  }).catch((error) => console.warn("No se pudo enviar la notificación de acceso:", error.message));
-  return res.json({ ok: true, message: "Código enviado al correo registrado. Vence en 10 minutos." });
+  try {
+    const notification = await fetch("https://ntfy.sh/col360-johan-2026", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain; charset=utf-8", Title: "Solicitud de acceso Col360" },
+      body: "Se envió un código de acceso de Col360 por correo.",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!notification.ok) console.warn("ntfy respondió con estado", notification.status);
+  } catch (error) {
+    console.warn("No se pudo enviar el aviso genérico de OTP:", error.message);
+  }
+  return res.json({ ok: true, message: "Código enviado. Revisa tu bandeja principal o spam." });
 });
 
 app.post("/api/verify-otp", (req, res) => {
@@ -300,7 +307,6 @@ function normalizeContext(value) {
     city: typeof value.city === "string" ? value.city.slice(0, 120) : "",
     name: typeof value.name === "string" ? value.name.slice(0, 160) : "",
     cedula: typeof value.cedula === "string" ? value.cedula.slice(0, 20) : "",
-    telefono: typeof value.telefono === "string" ? value.telefono.slice(0, 30) : "",
   };
 }
 

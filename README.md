@@ -3,7 +3,7 @@
 ## Servidor local del agente
 
 1. Instala las dependencias del proyecto con `npm install`.
-2. Copia `.env.example` a `.env` y completa `GROQ_API_KEY`, `SMTP_USER` y `SMTP_PASS`. Opcionalmente configura `SMTP_HOST` y `SMTP_PORT`; por defecto se usa `smtp-relay.brevo.com:587`. `API_SECRET_TOKEN` y el antiguo `COL360_AGENT_TOKEN` también se aceptan como Bearer adicionales. El modelo se detecta automáticamente; configura `GROQ_MODEL` solo si quieres sobrescribirlo.
+2. Copia `.env.example` a `.env` y completa `GROQ_API_KEY`, `SMTP_USER` y `SMTP_PASS`. Opcionalmente configura `SMTP_FROM`, `SMTP_HOST` y `SMTP_PORT`; por defecto se usa `smtp-relay.brevo.com:587`. `API_SECRET_TOKEN` y el antiguo `COL360_AGENT_TOKEN` también se aceptan como Bearer adicionales. El modelo se detecta automáticamente; configura `GROQ_MODEL` solo si quieres sobrescribirlo.
 3. Instala Chromium para Playwright una vez con `npx playwright install chromium`.
 4. Inicia el servicio con `node server.js`. Por defecto escucha solo en `127.0.0.1:3000`; `PORT` cambia el puerto.
 5. Si usas un túnel HTTPS, abre Col360 con `?server=https://tu-tunel` para guardarlo automáticamente en `localStorage`. También puedes configurar la URL haciendo doble clic en el indicador de estado. Sin URL configurada, el servidor aparece apagado. El cliente consulta `/health` cada 15 segundos.
