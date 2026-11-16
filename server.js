@@ -22,66 +22,71 @@ const PORT = Number(process.env.PORT || 3000);
 const GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_RATE_LIMIT_REPLY = "Dame 5 segundos que estoy procesando varias consultas seguidas y vuelve a escribirme.";
-const OFFICIAL_PORTAL_DOMAINS = [
-  "gov.co",
-  "saludtotal.com.co",
-  "nuevaeps.com.co",
-  "epssanitas.com",
-  "epssura.com",
-];
-const VISIBLE_TEXT_INPUTS = [
-  'input[type="text"]:visible',
-  'input[type="number"]:visible',
-  'input[type="email"]:visible',
-  'input:not([type]):visible',
-].join(", ");
 let cachedGroqApiKey = "";
 let cachedGroqModel = "";
-const REQUIRED_FIELDS = [
-  "nombre_completo",
-  "documento",
-  "correo",
-  "ciudad",
-  "entidad",
-  "servicio",
-  "fecha",
-  "hora",
-  "url_portal",
+const SUPPORTED_PORTALS = [
+  {
+    entidad: "SIMIT - Federación Colombiana de Municipios",
+    tramite: "Estado de Cuenta Comparendos",
+    url_portal: "https://www.fcm.org.co/simit/#/home-public",
+    tipo: "simit",
+  },
+  {
+    entidad: "ADRES - Ministerio de Salud",
+    tramite: "Consulta de Afiliados BDUA",
+    url_portal: "https://aplicaciones.adres.gov.co/bdua_internet/Pages/ConsultarAfiliadoWeb.aspx",
+    tipo: "adres",
+  },
+  {
+    entidad: "Contraloría General de la República",
+    tramite: "Certificado de Antecedentes Fiscales",
+    url_portal: "https://cfiscal.contraloria.gov.co/Certificados/CertificadoPersonaNatural.aspx",
+    tipo: "contraloria",
+  },
+  {
+    entidad: "Procuraduría General de la Nación",
+    tramite: "Certificado de Antecedentes Disciplinarios",
+    url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx",
+    tipo: "procuraduria",
+  },
 ];
-const FIELD_LABELS = {
-  nombre_completo: "nombre completo",
-  documento: "número de documento/cédula",
-  correo: "correo electrónico",
-  ciudad: "ciudad",
-  entidad: "entidad",
-  servicio: "tipo de servicio",
-  fecha: "fecha",
-  hora: "hora",
-  url_portal: "URL oficial del portal",
-};
+const REQUIRED_FIELDS = ["entidad", "tramite", "documento", "url_portal"];
+const SUPPORTED_SERVICES_REPLY = "En esta demo solo puedo realizar estas cuatro consultas oficiales: estado de cuenta de comparendos (SIMIT), afiliación en salud (ADRES), antecedentes fiscales (Contraloría) y antecedentes disciplinarios (Procuraduría).";
 
-const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Ayudas a los ciudadanos a resolver dudas de trámites y a agendar citas. REGLA OBLIGATORIA: Antes de ejecutar la herramienta 'ejecutar_tramite_web', verifica que tengas TODOS los datos obligatorios del ciudadano: nombre completo, número de documento/cédula, correo electrónico, ciudad, entidad, tipo de servicio, fecha y hora. Revisa primero los datos de sesión del usuario que te llegan en el contexto; si falta alguno de esos datos, NO llames todavía a la herramienta y pídele al usuario de forma amable y directa en una sola respuesta los datos exactos que faltan. Solo cuando tengas los 8 datos del ciudadano y la URL oficial real de la entidad, invoca 'ejecutar_tramite_web'. En url_portal prioriza la URL directa de citas o atención virtual si la conoces; por ejemplo Salud Total https://www.saludtotal.com.co/, Registraduría https://wsp.registraduria.gov.co/citas/asignacion-cita/, DIAN https://muisca.dian.gov.co/, Nueva EPS https://www.nuevaeps.com.co/, EPS Sanitas https://www.epssanitas.com/, EPS Sura https://www.epssura.com/ y MinSalud https://www.minsalud.gov.co/. Si no conoces la URL directa, usa la URL oficial de la entidad. No inventes dominios; el navegador solo acepta dominios oficiales gubernamentales o EPS permitidas.`;
+const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Atiendes EXCLUSIVAMENTE estas cuatro consultas oficiales reales, sin inventar URLs ni mezclar entidades o trámites:
+1. SIMIT (Multas / Comparendos) -> entidad: "SIMIT - Federación Colombiana de Municipios", tramite: "Estado de Cuenta Comparendos", url_portal: "https://www.fcm.org.co/simit/#/home-public"
+2. ADRES (Salud / EPS) -> entidad: "ADRES - Ministerio de Salud", tramite: "Consulta de Afiliados BDUA", url_portal: "https://aplicaciones.adres.gov.co/bdua_internet/Pages/ConsultarAfiliadoWeb.aspx"
+3. Contraloría (Antecedentes Fiscales) -> entidad: "Contraloría General de la República", tramite: "Certificado de Antecedentes Fiscales", url_portal: "https://cfiscal.contraloria.gov.co/Certificados/CertificadoPersonaNatural.aspx"
+4. Procuraduría (Antecedentes Disciplinarios) -> entidad: "Procuraduría General de la Nación", tramite: "Certificado de Antecedentes Disciplinarios", url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx"
+Si el ciudadano pide algo fuera de estos cuatro trámites, responde amablemente enumerando las cuatro opciones y NO llames a la herramienta. Antes de llamarla, verifica que tienes el trámite y el número de documento o la placa, según corresponda. Si falta alguno, pide solo el dato faltante. Llama a 'ejecutar_tramite_web' únicamente con la entidad, trámite y URL exactos de la misma opción. No resuelvas CAPTCHA automáticamente; deja la verificación para la persona usuaria en Chrome y solo envía después de su confirmación explícita.`;
 
 const tool = {
   type: "function",
   function: {
     name: "ejecutar_tramite_web",
-    description: "Abre el portal oficial indicado, diligencia los campos visibles coincidentes y lo deja listo para revisión, sin enviarlo.",
+    description: "Abre únicamente uno de los cuatro portales oficiales permitidos, rellena el documento o placa y espera la confirmación humana.",
     parameters: {
       type: "object",
       properties: {
-        nombre_completo: { type: "string", description: "Nombre completo del ciudadano." },
-        documento: { type: "string", description: "Cédula o tarjeta de identidad." },
-        correo: { type: "string", description: "Correo electrónico del ciudadano." },
-        ciudad: { type: "string", description: "Ciudad del trámite." },
-        entidad: { type: "string", description: "Entidad pública, por ejemplo MinSalud o DIAN." },
-        servicio: { type: "string", description: "Servicio o trámite solicitado." },
-        fecha: { type: "string", description: "Fecha solicitada." },
-        hora: { type: "string", description: "Hora solicitada." },
-        observaciones: { type: "string", description: "Observaciones opcionales." },
-        url_portal: { type: "string", description: "URL HTTPS oficial del portal colombiano de la entidad." },
+        entidad: {
+          type: "string",
+          enum: SUPPORTED_PORTALS.map((portal) => portal.entidad),
+          description: "Entidad oficial exacta correspondiente al trámite.",
+        },
+        tramite: {
+          type: "string",
+          enum: SUPPORTED_PORTALS.map((portal) => portal.tramite),
+          description: "Uno de los cuatro trámites oficiales permitidos.",
+        },
+        documento: { type: "string", description: "Número de documento o placa para la consulta." },
+        url_portal: {
+          type: "string",
+          enum: SUPPORTED_PORTALS.map((portal) => portal.url_portal),
+          description: "URL exacta correspondiente al trámite seleccionado.",
+        },
       },
       required: REQUIRED_FIELDS,
+      additionalProperties: false,
     },
   },
 };
@@ -91,13 +96,20 @@ let chatInProgress = false;
 let confirmationInProgress = false;
 const app = express();
 const corsOptions = {
-  origin: "*",
-  allowedHeaders: ["Content-Type", "Authorization", "Bypass-Tunnel-Reminder"],
+  origin: [
+    "https://col360.site",
+    "https://www.col360.site",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+  ],
+  allowedHeaders: ["Content-Type", "Authorization", "Bypass-Tunnel-Reminder", "ngrok-skip-browser-warning"],
   methods: ["GET", "POST", "OPTIONS"],
 };
 app.use(cors(corsOptions));
 // Express 5 rejects "*" as a route pattern; this regex matches every OPTIONS path.
-app.options(/.*/, cors());
+app.options(/.*/, cors(corsOptions));
 app.use(express.json({ limit: "256kb" }));
 const healthHandler = (req, res) => res.json({ status: "online", agent: "Col360" });
 app.get("/", healthHandler);
@@ -144,69 +156,66 @@ function parseToolArguments(raw) {
     throw new Error("Groq devolvió argumentos de trámite inválidos.");
   }
   const normalized = {};
-  for (const field of [...REQUIRED_FIELDS, "observaciones"]) {
+  for (const field of REQUIRED_FIELDS) {
     normalized[field] = typeof args[field] === "string" ? args[field].trim().slice(0, 1000) : "";
   }
-  const missing = REQUIRED_FIELDS.filter((field) => !normalized[field]);
-  if (missing.length) {
-    return {
-      missing,
-      args: normalized,
-    };
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.correo)) {
-    throw new Error("El correo electrónico del trámite no tiene un formato válido.");
-  }
-  return { missing: [], args: normalized };
+  const missing = ["tramite", "documento"].filter((field) => !normalized[field]);
+  return { missing, args: normalized };
 }
 
 function validatePortalUrl(value) {
-  let portal;
+  const portal = SUPPORTED_PORTALS.find((candidate) => candidate.url_portal === value);
+  if (!portal) {
+    throw new Error("El portal no coincide exactamente con una de las cuatro URLs oficiales permitidas.");
+  }
+  return portal.url_portal;
+}
+
+async function fillFirstVisibleText(page, value, portalName) {
   try {
-    portal = new URL(value);
-  } catch {
-    throw new Error("url_portal debe ser una URL absoluta válida.");
+    const field = page.locator('input[type="text"]:visible').first();
+    await field.fill(String(value), { timeout: 1500 });
+    return true;
+  } catch (error) {
+    console.warn(`No se pudo completar el documento en ${portalName}:`, error.message);
+    return false;
   }
-  const hostname = portal.hostname.toLowerCase().replace(/\.$/, "");
-  const isOfficialDomain = OFFICIAL_PORTAL_DOMAINS.some((domain) =>
-    hostname === domain || hostname.endsWith(`.${domain}`));
-  if (portal.protocol !== "https:" || portal.username || portal.password || portal.port || !isOfficialDomain) {
-    throw new Error("url_portal debe usar HTTPS y pertenecer a un dominio gubernamental o EPS oficial permitido.");
-  }
-  return portal.toString();
 }
 
-function normalizeFieldDescription(value) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+async function selectCedulaType(page, portalName) {
+  try {
+    const select = page.locator("select:visible").first();
+    await select.waitFor({ state: "visible", timeout: 1500 });
+    const option = await select.evaluate((element) => {
+      const match = Array.from(element.options).find((candidate) =>
+        /c[eé]dula/i.test(candidate.textContent || ""));
+      return match ? { value: match.value, label: match.textContent.trim() } : null;
+    });
+    if (!option) throw new Error("No hay una opción de cédula visible.");
+    await select.selectOption(
+      option.value ? option.value : { label: option.label },
+      { timeout: 1500 }
+    );
+    return true;
+  } catch (error) {
+    console.warn(`No se pudo seleccionar el tipo de cédula en ${portalName}:`, error.message);
+    return false;
+  }
 }
 
-async function fillVisibleFields(page, args) {
-  const fields = page.locator(VISIBLE_TEXT_INPUTS);
-  const count = await fields.count();
-  for (let index = 0; index < count; index += 1) {
-    const field = fields.nth(index);
-    try {
-      const metadata = await field.evaluate((element) => {
-        return [element.placeholder, element.name, element.id, element.getAttribute("aria-label")]
-          .filter(Boolean).join(" ");
-      });
-      const description = normalizeFieldDescription(metadata);
-      const key = /(document|cedula|identificacion|identity|usuario)/.test(description)
-        ? "documento"
-        : /(nombre|full.?name|first.?name|last.?name|(^|[_\s-])name($|[_\s-]))/.test(description)
-          ? "nombre_completo"
-          : /(correo|e.?mail)/.test(description)
-            ? "correo"
-            : /(ciudad|city|municipio|localidad)/.test(description)
-              ? "ciudad"
-              : "";
-      if (!key || !args[key]) continue;
-      await field.fill(args[key], { timeout: 1000 });
-    } catch (error) {
-      if (error.name !== "TimeoutError") {
-        console.warn("No se pudo completar un campo visible del portal:", error.message);
-      }
-    }
+async function highlightSubmitButton(page, selector, portalName) {
+  try {
+    const button = page.locator(selector).first();
+    await button.waitFor({ state: "visible", timeout: 1500 });
+    await button.scrollIntoViewIfNeeded({ timeout: 1500 });
+    await button.evaluate((element) => {
+      element.style.outline = "4px solid #dc2626";
+      element.style.outlineOffset = "3px";
+    });
+    return button;
+  } catch (error) {
+    console.warn(`No se encontró el botón principal en ${portalName}:`, error.message);
+    return null;
   }
 }
 
@@ -309,80 +318,100 @@ app.post("/api/chat", requireAgentToken, async (req, res) => {
     }
     const parsed = parseToolArguments(calls[0].function.arguments);
     if (parsed.missing.length) {
-      const missing = parsed.missing.map((field) => FIELD_LABELS[field]);
+      const missing = parsed.missing.map((field) =>
+        field === "tramite" ? "trámite" : "número de documento o placa");
       return res.json({
         type: "text",
-        reply: `Para continuar, indícame estos datos que faltan: ${missing.join(", ")}.`,
+        reply: `Para continuar, indícame el ${missing.join(" y el ")}.`,
       });
     }
 
-    const portalUrl = validatePortalUrl(parsed.args.url_portal);
-    const browser = await chromium.launch({ headless: false, slowMo: 250 });
+    const selectedPortal = SUPPORTED_PORTALS.find((portal) => portal.tramite === parsed.args.tramite);
+    if (!selectedPortal) {
+      return res.json({ type: "text", reply: SUPPORTED_SERVICES_REPLY });
+    }
+    const args = {
+      entidad: selectedPortal.entidad,
+      tramite: selectedPortal.tramite,
+      documento: parsed.args.documento,
+      url_portal: validatePortalUrl(selectedPortal.url_portal),
+    };
+    const browser = await chromium.launch({ headless: false, slowMo: 200 });
     try {
-      let page = await browser.newPage();
+      const page = await browser.newPage();
       page.setDefaultTimeout(1000);
-      await page.goto(portalUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
-      await page.waitForTimeout(2000);
-
       try {
-        await page.locator(
-          'button:visible:has-text("Aceptar todo"), button:visible:has-text("Aceptar"), button:visible:has-text("Entendido")'
-        ).first().click({ timeout: 1500 });
+        await page.goto(args.url_portal, { waitUntil: "domcontentloaded", timeout: 15000 });
       } catch (error) {
-        if (error.name !== "TimeoutError") {
-          console.warn("No se pudo cerrar el aviso de cookies:", error.message);
-        }
+        await browser.close();
+        return res.json({
+          type: "text",
+          reply: `No pude abrir el portal oficial de ${args.entidad}. Puede estar temporalmente fuera de servicio; inténtalo más tarde.`,
+        });
       }
-
-      if (await page.locator(VISIBLE_TEXT_INPUTS).count() === 0) {
-        const context = page.context();
-        const originalPages = new Set(context.pages());
+      await page.waitForTimeout(1500);
+      let documentFilled = false;
+      let submitButton = null;
+      if (selectedPortal.tipo === "simit") {
+        try {
+          await page.keyboard.press("Escape");
+        } catch (error) {
+          console.warn("No se pudo cerrar el anuncio de SIMIT con Escape:", error.message);
+        }
         try {
           await page.locator(
-            'a:visible:has-text("Oficina Virtual"), a:visible:has-text("Citas"), a:visible:has-text("Agendar"), a:visible:has-text("Trámites"), a:visible:has-text("Ingresar"), button:visible:has-text("Oficina Virtual"), button:visible:has-text("Citas"), button:visible:has-text("Agendar"), button:visible:has-text("Trámites"), button:visible:has-text("Ingresar")'
-          ).first().click({ timeout: 2500 });
+            'button.close, .modal .close, button:has-text("Cerrar"), button:has-text("Entendido"), [aria-label="Close"], .btn-close'
+          ).first().click({ timeout: 1200 });
         } catch (error) {
           if (error.name !== "TimeoutError") {
-            console.warn("No se pudo abrir la sección de citas o trámites:", error.message);
+            console.warn("No se pudo cerrar el anuncio emergente de SIMIT:", error.message);
           }
         }
-        await page.waitForTimeout(2500);
-        const newPage = context.pages().find((candidate) => !originalPages.has(candidate));
-        if (newPage) {
-          page = newPage;
-          await page.bringToFront();
-          page.setDefaultTimeout(1000);
-        }
+        documentFilled = await fillFirstVisibleText(page, args.documento, "SIMIT");
+        submitButton = await highlightSubmitButton(
+          page,
+          'button[type="submit"], button:has(svg), button.btn-primary',
+          "SIMIT"
+        );
+      } else if (selectedPortal.tipo === "adres") {
+        documentFilled = await fillFirstVisibleText(page, args.documento, "ADRES");
+        submitButton = await highlightSubmitButton(
+          page,
+          'input[type="submit"], input[value*="Consultar" i]',
+          "ADRES"
+        );
+      } else if (selectedPortal.tipo === "contraloria") {
+        await selectCedulaType(page, "Contraloría");
+        documentFilled = await fillFirstVisibleText(page, args.documento, "Contraloría");
+        submitButton = await highlightSubmitButton(
+          page,
+          'input[type="submit"], button:has-text("Buscar")',
+          "Contraloría"
+        );
+      } else if (selectedPortal.tipo === "procuraduria") {
+        await selectCedulaType(page, "Procuraduría");
+        documentFilled = await fillFirstVisibleText(page, args.documento, "Procuraduría");
+        submitButton = await highlightSubmitButton(
+          page,
+          'input[type="submit"], button:has-text("Consultar")',
+          "Procuraduría"
+        );
       }
 
-      await fillVisibleFields(page, parsed.args);
-
-      let submitButton = null;
-      try {
-        const candidate = page.locator(
-          'button[type="submit"]:visible, input[type="submit"]:visible, button:visible:has-text("Ingresar"), button:visible:has-text("Continuar"), button:visible:has-text("Agendar"), button:visible:has-text("Consultar"), button:visible:has-text("Enviar")'
-        ).first();
-        await candidate.waitFor({ state: "visible", timeout: 2000 });
-        await candidate.scrollIntoViewIfNeeded({ timeout: 2000 });
-        await candidate.evaluate((button) => {
-          button.style.outline = "4px solid #dc2626";
-          button.style.outlineOffset = "3px";
-        });
-        submitButton = candidate;
-      } catch (error) {
-        console.warn("No se encontró un botón principal visible en el portal:", error.message);
-      }
-
-      const screenshot = (await page.screenshot({ type: "jpeg", quality: 60 })).toString("base64");
-      activeSession = { browser, page, args: parsed.args, submitButton };
+      const screenshot = (await page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
+      activeSession = { browser, page, submitButton };
       return res.json({
         type: "preview",
-        reply: `He ingresado al portal oficial de ${parsed.args.entidad} y me he detenido antes de continuar/enviar. Revisa la captura:`,
+        reply: documentFilled
+          ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
+          : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
         screenshot,
-        datos: parsed.args,
+        datos: args,
       });
     } catch (error) {
-      await browser.close();
+      await browser.close().catch((closeError) => {
+        console.error("No se pudo cerrar Chromium tras fallar la preparación:", closeError);
+      });
       throw error;
     }
   } catch (error) {
@@ -403,19 +432,29 @@ app.post("/api/confirm", requireAgentToken, async (req, res) => {
   const session = activeSession;
   activeSession = null;
   try {
-    let radicado = "";
+    let submitError = null;
     if (session.submitButton) {
       try {
         await session.submitButton.click({ timeout: 2000 });
-        radicado = `COL360-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
       } catch (error) {
-        console.warn("No se pudo activar el botón principal del portal:", error.message);
+        submitError = error;
+        console.warn("No se pudo enviar la consulta desde el portal:", error.message);
       }
+    } else {
+      submitError = new Error("No se encontró un botón de consulta resaltado.");
     }
-    await session.page.waitForTimeout(1500);
-    const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 60 })).toString("base64");
+    await session.page.waitForTimeout(2500);
+    const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
     await session.browser.close();
-    return res.json({ ok: true, screenshot, radicado, sent: Boolean(radicado) });
+    if (submitError) {
+      return res.json({
+        ok: false,
+        error: "No se pudo enviar la consulta. Comprueba el CAPTCHA y el estado del portal; no se generó una referencia.",
+        screenshot,
+      });
+    }
+    const radicado = `COL360-${Date.now().toString().slice(-6)}`;
+    return res.json({ ok: true, screenshot, radicado });
   } catch (error) {
     await session.browser.close().catch((closeError) => {
       console.error("No se pudo cerrar Chromium tras fallar la confirmación:", closeError);
