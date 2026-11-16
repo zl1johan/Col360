@@ -99,12 +99,8 @@ const corsOptions = {
   origin: [
     "https://col360.site",
     "https://www.col360.site",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5500",
-    "http://127.0.0.1:5500",
   ],
-  allowedHeaders: ["Content-Type", "Authorization", "Bypass-Tunnel-Reminder", "ngrok-skip-browser-warning"],
+  allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
   methods: ["GET", "POST", "OPTIONS"],
 };
 app.use(cors(corsOptions));
