@@ -437,6 +437,7 @@
       .activation-consent input { margin-top: 3px; }
       .activation-status { min-height: 1.2em; font-weight: 700; }
       .quick-orders { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 14px 4px; }
+      .quick-orders[hidden] { display: none !important; }
       .quick-orders button { padding: 7px 9px; border: 1px solid #dce5f2; border-radius: 999px; background: #fff; color: var(--blue); font-size: .74rem; font-weight: 700; }
       .agent-form { display: flex; gap: 8px; padding: 11px 14px 14px; }
       .agent-form input { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; outline-color: var(--blue); }
@@ -1067,6 +1068,7 @@
         joiningQueue: false,
         queueReady: false,
         quickOptionsVisible: false,
+        consultationActive: false,
         agentOpenedOnce: false,
         welcomedQueue: false,
       };
@@ -1477,7 +1479,10 @@
         state.chatHistory = [];
         state.pendingWebSubmission = null;
         state.awaitingApproval = false;
+        state.consultationActive = false;
         waitingForCaptcha = false;
+        state.agentOpenedOnce = false;
+        state.quickOptionsVisible = false;
         $("#agentInput").placeholder = "Escribe lo que necesitas...";
         sessionStorage.removeItem("col360-session");
         $("#loginEmail").value = "";
@@ -1970,10 +1975,11 @@
         return payload;
       }
 
-      function appendMessage(text, sender, isError) {
+      function appendMessage(text, sender, isError, transient) {
         const message = document.createElement("div");
         message.className = `chat-message${sender === "user" ? " user" : ""}`;
         if (isError) message.classList.add("error");
+        if (transient) message.dataset.transientAgentMessage = "true";
         if (sender === "agent") {
           message.innerHTML = escapeHTML(text).replace(/\*\*(.+?)\*\*|\*(.+?)\*/g, (match, bold, italic) =>
             `<strong>${bold || italic}</strong>`);
@@ -1991,6 +1997,21 @@
         $("#agentLog").scrollTop = $("#agentLog").scrollHeight;
       }
 
+      function clearTransientAgentMessages() {
+        $$(".chat-message[data-transient-agent-message]", $("#agentLog")).forEach((message) => message.remove());
+        state.chatHistory = state.chatHistory.filter((entry) => !entry.transient);
+      }
+
+      function addAgentReply(text, transient) {
+        state.chatHistory.push({ role: "assistant", content: text, transient: Boolean(transient) });
+        appendMessage(text, "agent", false, transient);
+      }
+
+      function agentNeedsUserInput(reply) {
+        return /(?:necesito|ind[ií]came|indica|escribe|ingresa|proporciona|dime|env[ií]a(?:me)?|comparte).{0,100}(?:placa|c[oó]digo|dato|n[uú]mero|informaci[oó]n|consulta|documento|respuesta)|(?:placa|c[oó]digo|dato|n[uú]mero|informaci[oó]n|documento).{0,60}(?:necesito|por favor|para continuar)/i.test(reply)
+          || (/\?/.test(reply) && /(?:indica|escribe|ingresa|comparte|proporciona|dime|cu[aá]l|qu[eé]|dato|informaci[oó]n|placa|c[oó]digo)/i.test(reply));
+      }
+
       function setAgentBusy(busy) {
         state.agentBusy = busy;
         const captchaPending = waitingForCaptcha && Boolean($(".captcha-input"));
@@ -2004,7 +2025,10 @@
         $("#agentForm button[type='submit']").disabled = disabled;
         $$(".quick-orders button").forEach((button) => { button.disabled = quickOrdersDisabled; });
         $("#agentForm button[type='submit']").textContent = busy ? "…" : "➤";
-        $("#quickOrders").hidden = !state.quickOptionsVisible || busy || state.awaitingApproval;
+        $("#quickOrders").hidden = !state.quickOptionsVisible
+          || state.consultationActive
+          || busy
+          || state.awaitingApproval;
       }
 
       function updateQueueStatus(position, joined, total) {
@@ -2105,7 +2129,8 @@
           const captchaInput = card && $(".captcha-input", card);
           if (!captchaInput) return;
           if (prompt.length > 12) {
-            appendMessage("Escribe únicamente el código de la imagen (máximo 12 caracteres).", "agent", true);
+            const notice = "Escribe únicamente el código de la imagen (máximo 12 caracteres).";
+            appendMessage(notice, "agent", true, true);
             return;
           }
           captchaInput.value = prompt;
@@ -2119,6 +2144,7 @@
           return;
         }
         if (!alreadyDisplayed) appendMessage(prompt, "user");
+        state.consultationActive = true;
         state.quickOptionsVisible = false;
         setAgentBusy(true);
         try {
@@ -2150,21 +2176,20 @@
             state.quickOptionsVisible = false;
           } else if ((!result.type || result.type === "text") && typeof result.reply === "string") {
             if (result.reply) {
-              state.chatHistory.push({ role: "assistant", content: result.reply });
-              appendMessage(result.reply, "agent");
+              addAgentReply(result.reply, Boolean(result.transientReply));
             }
+            state.consultationActive = agentNeedsUserInput(result.reply);
+            state.quickOptionsVisible = !state.consultationActive;
           } else {
             throw new Error("El servidor devolvió un tipo de respuesta inesperado.");
           }
         } catch (error) {
           console.error("Error al consultar el servidor Col360.", error);
           appendMessage(`No pudimos completar la solicitud: ${error.message}`, "agent", true);
+          state.consultationActive = false;
+          state.quickOptionsVisible = true;
         } finally {
           setAgentBusy(false);
-          if (!state.awaitingApproval) {
-            state.quickOptionsVisible = true;
-            setAgentBusy(false);
-          }
           if (!state.awaitingApproval) $("#agentInput").focus();
         }
       }
@@ -2282,8 +2307,7 @@
           renderWebPreviewCard(card, { ...result, codigoIngresado: captcha });
           state.pendingWebSubmission = { datos: result.datos, card };
           if (result.reply) {
-            state.chatHistory.push({ role: "assistant", content: result.reply });
-            appendMessage(result.reply, "agent");
+            addAgentReply(result.reply, Boolean(result.transientReply));
           }
         } catch (error) {
           console.error("No se pudo aplicar el código CAPTCHA en el portal.", error);
@@ -2310,8 +2334,7 @@
           renderWebPreviewCard(card, { ...result, codigoIngresado: "Restablecido; ingresa el nuevo código." });
           state.pendingWebSubmission = { datos: result.datos, card };
           if (result.reply) {
-            state.chatHistory.push({ role: "assistant", content: result.reply });
-            appendMessage(result.reply, "agent");
+            addAgentReply(result.reply, Boolean(result.transientReply));
           }
         } catch (error) {
           appendMessage(`No se pudo restablecer el código: ${error.message}`, "agent", true);
@@ -2324,8 +2347,10 @@
       function finishWebPreview() {
         state.pendingWebSubmission = null;
         state.awaitingApproval = false;
+        state.consultationActive = false;
         waitingForCaptcha = false;
         state.quickOptionsVisible = true;
+        clearTransientAgentMessages();
         setAgentBusy(false);
         $("#agentInput").focus();
       }
@@ -2359,8 +2384,7 @@
             state.awaitingApproval = true;
             setAgentBusy(false);
             if (result.reply) {
-              state.chatHistory.push({ role: "assistant", content: result.reply });
-              appendMessage(result.reply, "agent");
+              addAgentReply(result.reply, Boolean(result.transientReply));
             }
             return;
           }
@@ -2425,7 +2449,7 @@
         $("#agentPanel").hidden = false;
         $("#agentFab").setAttribute("aria-expanded", "true");
         if (!state.agentOpenedOnce) {
-          state.quickOptionsVisible = true;
+          state.quickOptionsVisible = !state.consultationActive && !state.awaitingApproval;
           state.agentOpenedOnce = true;
           setAgentBusy(false);
         }
@@ -2440,8 +2464,10 @@
         state.pendingWebSubmission = null;
         state.awaitingApproval = false;
         waitingForCaptcha = false;
+        state.consultationActive = false;
         state.agentOpenedOnce = false;
         state.quickOptionsVisible = false;
+        clearTransientAgentMessages();
         setAgentBusy(false);
       }
 

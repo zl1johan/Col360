@@ -1247,6 +1247,7 @@ app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) 
         reply: session.portalType === "adres"
           ? "El código no coincidió."
           : "La respuesta no coincidió.",
+        transientReply: true,
         screenshot: await captureCaptcha(session.page, session.portalType),
         datos: consultationData,
       });
