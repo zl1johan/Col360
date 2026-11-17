@@ -134,6 +134,7 @@ const healthHandler = (req, res) => {
 app.get("/", healthHandler);
 app.get("/health", healthHandler);
 async function requestServerWake(req, res) {
+  const isReadyNotification = req.path === "/api/notify-server-ready";
   const body = req.body || {};
   const nombre = typeof body.nombre === "string" ? body.nombre.trim().slice(0, 160) : "";
   const correo = typeof body.correo === "string" ? body.correo.trim().toLowerCase().slice(0, 254) : "";
@@ -162,7 +163,7 @@ async function requestServerWake(req, res) {
     console.error("No se pudo guardar la solicitud de encendido:", error.message);
     return res.status(500).json({ ok: false, error: "No se pudo guardar la solicitud." });
   }
-  fetch("https://ntfy.sh/col360-johan-2026", {
+  if (!isReadyNotification) fetch("https://ntfy.sh/col360-johan-2026", {
       method: "POST",
       headers: { "Content-Type": "text/plain; charset=utf-8", Title: "Solicitud de encendido Col360" },
       body: "Hay una nueva solicitud de encendido de Server Col360.",
@@ -172,9 +173,23 @@ async function requestServerWake(req, res) {
       if (!notification.ok) console.warn("ntfy respondió con estado", notification.status);
     })
     .catch((error) => console.warn("No se pudo enviar el aviso genérico de encendido a ntfy:", error.message));
-  notifyPendingServerRequesters().catch((error) => {
-    console.error("No se pudo procesar la solicitud de aviso de encendido:", error.message);
-  });
+  if (isReadyNotification) {
+    try {
+      await notifyPendingServerRequesters();
+      const emailPending = pendingServerRequesters.some((requester) =>
+        String(requester.correo || "").toLowerCase() === correo);
+      if (emailPending) {
+        return res.status(502).json({ ok: false, error: "No se pudo enviar el correo de aviso." });
+      }
+    } catch (error) {
+      console.error("No se pudo procesar la solicitud de aviso de encendido:", error.message);
+      return res.status(500).json({ ok: false, error: "No se pudo enviar el correo de aviso." });
+    }
+  } else {
+    notifyPendingServerRequesters().catch((error) => {
+      console.error("No se pudo procesar la solicitud de aviso de encendido:", error.message);
+    });
+  }
   return res.json({ ok: true });
 }
 app.post("/api/request-server-wake", requestServerWake);
