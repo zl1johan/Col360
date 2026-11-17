@@ -79,17 +79,11 @@
       .brand-logo { display: flex; align-items: center; gap: 8px; }
       .brand-logo img:first-child { width: auto; height: 34px; }
       .brand-logo img:last-child { width: auto; height: 26px; }
-      .nav-links { display: flex; align-items: center; gap: 25px; }
-      .nav-links a {
-        color: #43516a;
-        font-size: 0.91rem;
-        font-weight: 600;
-        text-decoration: none;
-      }
-      .nav-links a:hover, .nav-links a:focus-visible { color: var(--blue); }
       .top-actions { display: flex; align-items: center; gap: 12px; }
-      .user-summary { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.78rem; text-align: right; }
+      .user-summary { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.78rem; text-align: right; }
+      .user-summary:hover, .user-summary:focus-visible { background: var(--blue-pale); outline-color: var(--blue); }
       .user-summary strong { display: block; color: var(--ink); }
+      .profile-copy { display: block; }
       .user-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #edf4ff; color: var(--blue); font-size: 1.1rem; }
       .user-avatar svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
       .server-control { display: flex; }
@@ -223,10 +217,14 @@
       }
       .hero-card .mini-label { color: #d5e4ff; font-size: .84rem; font-weight: 700; }
       .hero-card h2 { margin: 5px 0 17px; font-size: 1.35rem; }
-      .hero-category-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-      .hero-category { min-height: 100px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; padding: 15px; border: 1px solid rgba(255,255,255,.2); border-radius: 14px; background: rgba(255,255,255,.12); color: #fff; font-size: .88rem; font-weight: 750; text-decoration: none; }
-      .hero-category span { font-size: 1.3rem; }
+      .hero-category-grid { display: grid; gap: 8px; }
+      .hero-category { min-height: 58px; display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; background: rgba(255,255,255,.12); color: #fff; font-size: .86rem; font-weight: 750; text-decoration: none; }
       .hero-category:hover { background: rgba(255,255,255,.2); }
+      .hero-category-icon { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: rgba(255,255,255,.16); }
+      .hero-category-icon svg { width: 29px; height: 29px; }
+      .hero-category strong { flex: 1; }
+      .hero-category-plus { font-size: 1.35rem; font-weight: 500; }
+      .hero-agent-button { width: 100%; margin-top: 10px; border-color: rgba(255,255,255,.35); background: #f0bd45; color: #102f67; }
       .preview-card, .service-card, .news-card, .appointment-card {
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -529,18 +527,16 @@
         .hero-inner { grid-template-columns: 1fr .8fr; gap: 25px; }
         .service-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .nav-links { gap: 14px; }
       }
-      @media (max-width: 650px) {
-        .topbar { flex-wrap: wrap; gap: 9px 14px; padding: 10px 16px; }
+      @media (max-width: 768px) {
+        .topbar { min-height: 62px; flex-wrap: nowrap; gap: 8px; padding: 8px 14px; }
         .brand { font-size: 1.15rem; }
         .brand-logo img:first-child { height: 30px; }
         .brand-logo img:last-child { height: 23px; }
-        .nav-links { order: 3; width: 100%; justify-content: space-between; gap: 8px; }
-        .nav-links a { font-size: .78rem; }
-        .top-actions { margin-left: auto; }
-        .user-summary { order: 4; width: 100%; justify-content: flex-end; font-size: .7rem; }
-        .top-actions .button { min-height: 38px; padding: 7px 12px; font-size: .8rem; }
+        .top-actions { flex: 0 0 auto; margin-left: auto; gap: 8px; }
+        .user-summary { width: 38px; height: 38px; justify-content: center; padding: 0; }
+        .profile-copy { display: none; }
+        .server-toggle { gap: 6px; padding: 6px 9px; font-size: .75rem; }
         .agent-panel { right: 8px; bottom: 76px; width: calc(100vw - 16px); height: calc(100dvh - 90px); max-height: calc(100dvh - 90px); }
         .hero-inner { min-height: auto; grid-template-columns: 1fr; gap: 30px; padding: 55px 0; }
         .hero-card { max-width: 500px; }
@@ -664,20 +660,17 @@
       <a class="brand" href="#inicio" id="brandHome" aria-label="Col360, inicio">
         <span class="brand-logo"><img src="star.png" alt="Col360" /><img src="name.png" alt="Col360" /></span>
       </a>
-      <nav class="nav-links" aria-label="Navegación principal">
-        <a href="#inicio" data-nav="inicio">Inicio</a>
-        <a href="#servicios" data-nav="servicios">Servicios</a>
-        <a href="#noticias" data-nav="noticias">Noticias</a>
-      </nav>
       <div class="top-actions">
-        <div class="user-summary" id="userSummary" hidden></div>
         <div class="server-control">
           <button class="server-toggle" id="serverStatus" type="button" role="switch" aria-checked="false" aria-label="Server" title="Pulsa para comprobar el servidor; doble clic para configurar su URL">
             <span>Server</span><span class="server-switch" aria-hidden="true"></span>
           </button>
           <p id="serverMessage" aria-live="polite" hidden></p>
         </div>
-        <button class="button small" id="loginOpen" type="button">Iniciar sesión</button>
+        <button class="user-summary" id="userSummary" type="button" aria-label="Iniciar sesión o abrir menú de usuario">
+          <span class="user-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.5 3.2-5.3 7-5.3s6.3 1.8 7 5.3"></path></svg></span>
+          <span class="profile-copy" id="profileCopy"></span>
+        </button>
       </div>
     </header>
 
@@ -697,6 +690,7 @@
               <span class="mini-label">Col360</span>
               <h2>Servicios para cada momento</h2>
               <div class="hero-category-grid" id="landingServices"></div>
+              <button type="button" class="button hero-agent-button" data-open-agent>+ Agente Col360 IA</button>
             </aside>
           </div>
         </div>
@@ -856,6 +850,27 @@
         <p class="login-error" id="activationError" role="alert"></p>
         <button class="button" type="submit" style="width: 100%">Enviar solicitud</button>
       </form>
+    </div>
+    <div class="login-overlay profile-overlay" id="profileOverlay" role="dialog" aria-modal="true" aria-labelledby="profileTitle" hidden>
+      <section class="login-card profile-card">
+        <button class="close-login" type="button" id="profileClose" aria-label="Cerrar menú de usuario">×</button>
+        <div id="profileMenuView">
+          <h2 id="profileTitle">Tu cuenta Col360</h2>
+          <p class="login-intro"><strong id="profileName"></strong><br /><span id="profileEmail"></span></p>
+          <button type="button" class="button secondary" id="profileEdit" style="width:100%">Editar datos</button>
+          <button type="button" class="button danger" id="profileLogout" style="width:100%;margin-top:9px">Cerrar sesión</button>
+        </div>
+        <form id="profileEditForm" hidden>
+          <h2>Editar datos</h2>
+          <label class="field-label" for="profileEditName">Nombre</label>
+          <input class="form-control" id="profileEditName" type="text" maxlength="160" autocomplete="name" required />
+          <label class="field-label" for="profileEditCedula">Cédula</label>
+          <input class="form-control" id="profileEditCedula" type="text" inputmode="numeric" maxlength="20" autocomplete="off" required />
+          <p class="login-error" id="profileEditError" role="alert"></p>
+          <button class="button" type="submit" style="width:100%">Guardar cambios</button>
+          <button type="button" class="button secondary" id="profileEditCancel" style="width:100%;margin-top:9px">Cancelar</button>
+        </form>
+      </section>
     </div>
     <div class="toast" id="codeToast" role="status" aria-live="polite" hidden></div>
     <div class="lightbox" id="imageLightbox" role="dialog" aria-modal="true" aria-label="Visor de captura" hidden>
@@ -1019,6 +1034,7 @@
       const PENDING_SERVER_ALERT_STORAGE = "col360_pending_server_alert";
       const ACTIVATION_SENT_STORAGE = "col360-server-activation-sent";
       const ACTIVATION_FAILED_STORAGE = "col360-server-activation-failed";
+      const USER_PROFILE_STORAGE = "col360-profile";
       const state = {
         user: null,
         newsTopic: "Todos",
@@ -1070,41 +1086,52 @@
       const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (char) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[char]);
+      const createWakeRequestId = () => window.crypto.randomUUID
+        ? window.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       function showView() {
         const signedIn = Boolean(state.user);
         $("#view-landing").hidden = signedIn;
         $("#view-dashboard").hidden = !signedIn;
-        $("#loginOpen").textContent = signedIn ? "Cerrar sesión" : "Iniciar sesión";
-        $("#loginOpen").setAttribute("aria-label", signedIn ? "Cerrar sesión" : "Iniciar sesión");
-        $("#userSummary").hidden = !signedIn;
-        $("#userSummary").innerHTML = signedIn
-          ? `<span class="user-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.5 3.2-5.3 7-5.3s6.3 1.8 7 5.3"></path></svg></span><span>${escapeHTML(state.user.correo)}</span>`
+        $("#userSummary").setAttribute("aria-label", signedIn ? "Abrir menú de usuario" : "Iniciar sesión");
+        $("#profileCopy").innerHTML = signedIn
+          ? `<strong>${escapeHTML(state.user.nombre)}</strong><span>${escapeHTML(state.user.correo)}</span>`
           : "";
         $("#welcomeTitle").textContent = signedIn
-          ? `Bienvenido ${String(state.user.nombre || "").trim().split(/\s+/)[0]} a Col360`
+          ? `Bienvenido ${String(state.user.nombre || "").trim()} a Col360`
           : "Bienvenido a Col360";
         $("#agentFab").hidden = false;
-        updateNavTargets();
         if (signedIn) renderDashboard();
         else renderNews();
       }
 
-      function updateNavTargets() {
-        const links = {
-          inicio: state.user ? "#view-dashboard" : "#inicio",
-          servicios: state.user ? "#serviceCategories" : "#servicios",
-          noticias: state.user ? "#dashboard-news" : "#noticias",
-        };
-        $$("[data-nav]").forEach((link) => {
-          if (links[link.dataset.nav]) link.href = links[link.dataset.nav];
-        });
+      function saveUserProfileLocal() {
+        if (!state.user) {
+          localStorage.removeItem(USER_PROFILE_STORAGE);
+          return;
+        }
+        localStorage.setItem(USER_PROFILE_STORAGE, JSON.stringify({
+          nombre: state.user.nombre,
+          cedula: state.user.cedula,
+          correo: state.user.correo,
+        }));
+      }
+
+      function updateUserInLocalStorage() {
+        saveUserProfileLocal();
+        if (state.user) {
+          sessionStorage.setItem("col360-session", JSON.stringify({
+            cedula: state.user.cedula,
+            city: state.user.city,
+          }));
+        }
         $("#brandHome").href = state.user ? "#view-dashboard" : "#inicio";
       }
 
       function openLogin() {
         if (state.user) {
-          logout();
+          openProfileMenu();
           return;
         }
         if (!serverSwitchOn || !serverOnline) {
@@ -1116,6 +1143,69 @@
         $("#loginError").textContent = "";
         setAuthView("login");
         $("#loginEmail").focus();
+      }
+
+      function openProfileMenu() {
+        if (!state.user) {
+          openLogin();
+          return;
+        }
+        $("#profileName").textContent = state.user.nombre || "";
+        $("#profileEmail").textContent = state.user.correo || "";
+        $("#profileMenuView").hidden = false;
+        $("#profileEditForm").hidden = true;
+        $("#profileOverlay").hidden = false;
+        syncModalState();
+      }
+
+      function closeProfileMenu() {
+        $("#profileOverlay").hidden = true;
+        syncModalState();
+      }
+
+      function openProfileEditor() {
+        $("#profileEditName").value = state.user.nombre || "";
+        $("#profileEditCedula").value = state.user.cedula || "";
+        $("#profileEditError").textContent = "";
+        $("#profileMenuView").hidden = true;
+        $("#profileEditForm").hidden = false;
+        $("#profileEditName").focus();
+      }
+
+      async function saveProfileChanges(event) {
+        event.preventDefault();
+        if (!state.user) return;
+        const nombre = $("#profileEditName").value.trim();
+        const cedula = $("#profileEditCedula").value.replace(/\D/g, "").slice(0, 20);
+        if (!nombre) {
+          $("#profileEditError").textContent = "Ingresa tu nombre.";
+          return;
+        }
+        if (!/^\d{5,20}$/.test(cedula)) {
+          $("#profileEditError").textContent = "Ingresa una cédula válida.";
+          $("#profileEditCedula").focus();
+          return;
+        }
+        const button = $("#profileEditForm button[type='submit']");
+        button.disabled = true;
+        $("#profileEditError").textContent = "";
+        try {
+          const result = await serverRequest("/api/update-profile", {
+            currentCedula: state.user.cedula,
+            correo: state.user.correo,
+            nombre,
+            cedula,
+          });
+          if (!result.ok || !result.user) throw new Error(result.error || "No se pudieron guardar los cambios.");
+          state.user = { ...result.user, city: state.user.city || result.user.ciudad || "Bogotá" };
+          updateUserInLocalStorage();
+          showView();
+          closeProfileMenu();
+        } catch (error) {
+          $("#profileEditError").textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
       }
 
       function setAuthView(view) {
@@ -1271,10 +1361,7 @@
           });
           if (!result.ok || !result.user) throw new Error(result.error || "No se pudo iniciar sesión.");
           state.user = { ...result.user, city: result.user.ciudad || "Bogotá" };
-          sessionStorage.setItem("col360-session", JSON.stringify({
-            cedula: state.user.cedula,
-            city: state.user.city,
-          }));
+          updateUserInLocalStorage();
           closeLogin();
           showView();
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1305,10 +1392,7 @@
           });
           if (!result.ok || !result.user) throw new Error(result.error || "No se pudo completar el registro.");
           state.user = { ...result.user, city: result.user.ciudad || "Bogotá" };
-          sessionStorage.setItem("col360-session", JSON.stringify({
-            cedula: state.user.cedula,
-            city: state.user.city,
-          }));
+          updateUserInLocalStorage();
           closeLogin();
           showView();
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1368,6 +1452,7 @@
         }
         leaveQueue();
         state.user = null;
+        updateUserInLocalStorage();
         state.manualCityChoice = false;
         state.chatHistory = [];
         state.pendingWebSubmission = null;
@@ -1406,14 +1491,14 @@
 
       function renderLandingServices() {
         const previews = [
-          ["Salud y Bienestar", "♥", "salud"],
-          ["Identidad y trámites", "▣", "registraduria"],
-          ["Educación y empleo", "▤", "educacion"],
-          ["Hogar, movilidad e impuestos", "⌂", "transporte"],
+          ["Salud y Bienestar", "salud"],
+          ["Identidad y trámites", "registraduria"],
+          ["Educación y empleo", "educacion"],
+          ["Hogar, movilidad e impuestos", "transporte"],
         ];
-        $("#landingServices").innerHTML = previews.map(([name, icon, serviceKey]) =>
+        $("#landingServices").innerHTML = previews.map(([name, serviceKey]) =>
           `<a class="hero-category" href="${escapeHTML(services[serviceKey].url)}" target="_blank" rel="noopener noreferrer">
-            <span aria-hidden="true">${icon}</span><strong>${escapeHTML(name)}</strong>
+            <span class="hero-category-icon" aria-hidden="true">${services[serviceKey].icon}</span><strong>${escapeHTML(name)}</strong><span class="hero-category-plus" aria-hidden="true">+</span>
           </a>`
         ).join("");
       }
@@ -1476,13 +1561,14 @@
           return false;
         }
         state.user = { ...result.user, city: city || result.user.ciudad || result.user.city || "Bogotá" };
-        sessionStorage.setItem("col360-session", JSON.stringify({ cedula: state.user.cedula, city: state.user.city }));
+        updateUserInLocalStorage();
         return true;
       }
 
       function syncModalState() {
         const modalOpen = !$("#loginOverlay").hidden
           || !$("#activationOverlay").hidden
+          || !$("#profileOverlay").hidden
           || !$("#imageLightbox").hidden;
         document.body.classList.toggle("modal-open", modalOpen);
       }
@@ -1558,8 +1644,10 @@
           console.error("La solicitud de encendido pendiente tiene un formato inválido.");
           return;
         }
+        requester.requestId = requester.requestId || createWakeRequestId();
+        localStorage.setItem(PENDING_SERVER_REQUEST_STORAGE, JSON.stringify(requester));
         pendingActivationFlush = true;
-        serverRequest("/api/server-request", requester)
+        serverRequest("/api/request-server-wake", requester)
           .then((result) => {
             if (!result.ok) throw new Error(result.error || "No se pudo registrar la solicitud pendiente.");
             localStorage.removeItem(PENDING_SERVER_REQUEST_STORAGE);
@@ -1601,14 +1689,18 @@
           console.error("El aviso de encendido pendiente tiene un formato inválido.");
           return;
         }
+        requester.requestId = requester.requestId || createWakeRequestId();
+        const requestToSend = JSON.stringify(requester);
+        localStorage.setItem(PENDING_SERVER_ALERT_STORAGE, requestToSend);
         pendingServerReadyFlush = true;
         try {
-          const result = await serverRequest("/api/notify-server-ready", {
+          const result = await serverRequest("/api/request-server-wake", {
             nombre: requester.nombre,
             correo: requester.correo,
+            requestId: requester.requestId,
           });
           if (!result || !result.ok) throw new Error("El servidor no pudo enviar el correo de aviso.");
-          if (localStorage.getItem(PENDING_SERVER_ALERT_STORAGE) === stored) {
+          if (localStorage.getItem(PENDING_SERVER_ALERT_STORAGE) === requestToSend) {
             localStorage.removeItem(PENDING_SERVER_ALERT_STORAGE);
             activationSent = false;
             localStorage.removeItem(ACTIVATION_SENT_STORAGE);
@@ -1636,7 +1728,7 @@
         serverSwitchOn = isOnline;
         $("#serverStatus").setAttribute("aria-checked", String(isOnline));
         $("#serverStatus").disabled = false;
-        $("#loginOpen").disabled = false;
+        $("#userSummary").disabled = false;
         $("#agentFab").disabled = false;
         if (isOnline) {
           if (!localStorage.getItem(PENDING_SERVER_ALERT_STORAGE)) {
@@ -1680,6 +1772,7 @@
         const requester = {
           nombre: $("#activationName").value.trim(),
           correo: $("#activationEmail").value.trim().toLowerCase(),
+          requestId: createWakeRequestId(),
         };
         const submit = form.querySelector("button[type='submit']");
         submit.disabled = true;
@@ -1690,17 +1783,17 @@
           return;
         }
         try {
-          const result = await serverRequest("/api/server-request", requester);
+          const result = await serverRequest("/api/request-server-wake", requester);
           if (!result.ok) throw new Error(result.error || "No se pudo registrar la solicitud.");
           activationSent = true;
           activationFailed = false;
           localStorage.setItem(ACTIVATION_SENT_STORAGE, "1");
           localStorage.removeItem(ACTIVATION_FAILED_STORAGE);
           closeActivationModal();
-          showActivationConfirmation("Solicitud enviada. Te avisaremos por correo apenas el servidor se encienda.");
+          showActivationConfirmation("Solicitud enviada. Te avisaremos por correo apenas el servidor se encienda. Revisa también tu carpeta de Spam o correo no deseado, ya que el aviso puede llegar allí.");
         } catch (error) {
           console.error("No se pudo enviar la solicitud de activación.", error);
-          if (error.status && ![502, 503, 504].includes(error.status)) {
+          if (error.status && ![500, 502, 503, 504].includes(error.status)) {
             $("#activationError").textContent = error.message || "No se pudo registrar la solicitud.";
             activationFailed = true;
             localStorage.setItem(ACTIVATION_FAILED_STORAGE, "1");
@@ -1718,12 +1811,12 @@
           activationSent = true;
           activationFailed = false;
           localStorage.removeItem(ACTIVATION_FAILED_STORAGE);
-          let confirmation = "Solicitud enviada. Te avisaremos por correo apenas el servidor se encienda.";
+          let confirmation = "Solicitud enviada. Te avisaremos por correo apenas el servidor se encienda. Revisa también tu carpeta de Spam o correo no deseado, ya que el aviso puede llegar allí.";
           try {
             await sendPublicActivationAlert(requester.nombre, requester.correo);
           } catch (notificationError) {
             console.error("No se pudo enviar el aviso público genérico de encendido.", notificationError);
-            confirmation = "Solicitud guardada en este navegador, pero no se pudo enviar el aviso de encendido.";
+            confirmation = "Solicitud guardada en este navegador, pero no se pudo enviar el aviso de encendido. Revisa también tu carpeta de Spam o correo no deseado, ya que el aviso puede llegar allí.";
           }
           closeActivationModal();
           showActivationConfirmation(confirmation);
@@ -1845,7 +1938,7 @@
         $("#agentForm button[type='submit']").disabled = disabled;
         $$(".quick-orders button").forEach((button) => { button.disabled = quickOrdersDisabled; });
         $("#agentForm button[type='submit']").textContent = busy ? "…" : "➤";
-        $("#quickOrders").hidden = !state.quickOptionsVisible;
+        $("#quickOrders").hidden = !state.quickOptionsVisible || busy || state.awaitingApproval;
       }
 
       function updateQueueStatus(position, joined, total) {
@@ -1981,15 +2074,19 @@
             if (!result.datos || typeof result.screenshot !== "string") {
               throw new Error("El servidor no devolvió la captura y los datos de la previsualización.");
             }
-            state.chatHistory.push({ role: "assistant", content: result.reply });
-            appendMessage(result.reply, "agent");
+            if (result.reply) {
+              state.chatHistory.push({ role: "assistant", content: result.reply });
+              appendMessage(result.reply, "agent");
+            }
             const card = appendWebPreview(result, result.screenshot);
             state.pendingWebSubmission = { datos: result.datos, card };
             state.awaitingApproval = true;
             state.quickOptionsVisible = false;
           } else if ((!result.type || result.type === "text") && typeof result.reply === "string") {
-            state.chatHistory.push({ role: "assistant", content: result.reply });
-            appendMessage(result.reply, "agent");
+            if (result.reply) {
+              state.chatHistory.push({ role: "assistant", content: result.reply });
+              appendMessage(result.reply, "agent");
+            }
           } else {
             throw new Error("El servidor devolvió un tipo de respuesta inesperado.");
           }
@@ -1998,6 +2095,10 @@
           appendMessage(`No pudimos completar la solicitud: ${error.message}`, "agent", true);
         } finally {
           setAgentBusy(false);
+          if (!state.awaitingApproval) {
+            state.quickOptionsVisible = true;
+            setAgentBusy(false);
+          }
           if (!state.awaitingApproval) $("#agentInput").focus();
         }
       }
@@ -2041,6 +2142,9 @@
           ["Trámite", datos.tramite],
           ["Portal oficial", datos.portal_corto || datos.url_portal],
         ];
+        if (typeof data.codigoIngresado === "string") {
+          fields.push(["Código ingresado", data.codigoIngresado]);
+        }
         fields.forEach(([label, value]) => {
           const line = document.createElement("div");
           const strong = document.createElement("strong");
@@ -2109,10 +2213,12 @@
           if (result.type !== "preview" || result.step !== "confirm_submit" || typeof result.screenshot !== "string") {
             throw new Error("El servidor no devolvió la nueva captura del portal.");
           }
-          renderWebPreviewCard(card, result);
+          renderWebPreviewCard(card, { ...result, codigoIngresado: captcha });
           state.pendingWebSubmission = { datos: result.datos, card };
-          state.chatHistory.push({ role: "assistant", content: result.reply });
-          if (result.reply) appendMessage(result.reply, "agent");
+          if (result.reply) {
+            state.chatHistory.push({ role: "assistant", content: result.reply });
+            appendMessage(result.reply, "agent");
+          }
         } catch (error) {
           console.error("No se pudo aplicar el código CAPTCHA en el portal.", error);
           appendMessage(`No se pudo ingresar el código: ${error.message}`, "agent", true);
@@ -2135,10 +2241,12 @@
           if (result.step !== "enter_captcha" || typeof result.screenshot !== "string") {
             throw new Error("El servidor no devolvió la imagen CAPTCHA actualizada.");
           }
-          renderWebPreviewCard(card, result);
+          renderWebPreviewCard(card, { ...result, codigoIngresado: "Restablecido; ingresa el nuevo código." });
           state.pendingWebSubmission = { datos: result.datos, card };
-          state.chatHistory.push({ role: "assistant", content: result.reply });
-          appendMessage(result.reply, "agent");
+          if (result.reply) {
+            state.chatHistory.push({ role: "assistant", content: result.reply });
+            appendMessage(result.reply, "agent");
+          }
         } catch (error) {
           appendMessage(`No se pudo restablecer el código: ${error.message}`, "agent", true);
           buttons.forEach((button) => { button.disabled = false; });
@@ -2177,11 +2285,14 @@
             if (typeof result.screenshot !== "string") {
               throw new Error("El servidor no devolvió la nueva captura del CAPTCHA.");
             }
-            renderWebPreviewCard(card, result);
+            renderWebPreviewCard(card, {
+              ...result,
+              codigoIngresado: "Código restablecido; ingresa el nuevo código.",
+            });
             state.pendingWebSubmission = { datos: result.datos || pending.datos, card };
             state.awaitingApproval = true;
             setAgentBusy(false);
-            if (typeof result.reply === "string") {
+            if (result.reply) {
               state.chatHistory.push({ role: "assistant", content: result.reply });
               appendMessage(result.reply, "agent");
             }
@@ -2296,11 +2407,31 @@
       function updateCity(city) {
         if (!state.user || !city) return;
         state.user.city = city;
-        sessionStorage.setItem("col360-session", JSON.stringify({ cedula: state.user.cedula, city }));
+        updateUserInLocalStorage();
         showView();
       }
 
-      $("#loginOpen").addEventListener("click", openLogin);
+      $("#userSummary").addEventListener("click", () => {
+        if (state.user) openProfileMenu();
+        else openLogin();
+      });
+      $("#profileClose").addEventListener("click", closeProfileMenu);
+      $("#profileOverlay").addEventListener("click", (event) => {
+        if (event.target === $("#profileOverlay")) closeProfileMenu();
+      });
+      $("#profileEdit").addEventListener("click", openProfileEditor);
+      $("#profileEditCancel").addEventListener("click", () => {
+        $("#profileMenuView").hidden = false;
+        $("#profileEditForm").hidden = true;
+      });
+      $("#profileEditForm").addEventListener("submit", saveProfileChanges);
+      $("#profileEditCedula").addEventListener("input", (event) => {
+        event.target.value = event.target.value.replace(/\D/g, "").slice(0, 20);
+      });
+      $("#profileLogout").addEventListener("click", () => {
+        closeProfileMenu();
+        logout();
+      });
       $$("[data-open-login]").forEach((button) => button.addEventListener("click", (event) => {
         event.preventDefault();
         openLogin();
@@ -2405,6 +2536,7 @@
           }
           closeLogin();
           closeActivationModal();
+          closeProfileMenu();
           closeAgent();
         }
       });
@@ -2458,6 +2590,7 @@
         renderNews();
       }));
       $("#agentFab").addEventListener("click", () => $("#agentPanel").hidden ? openAgent() : closeAgent());
+      $$("[data-open-agent]").forEach((button) => button.addEventListener("click", openAgent));
       $("#agentClose").addEventListener("click", closeAgent);
       $("#agentForm").addEventListener("submit", (event) => {
         event.preventDefault();

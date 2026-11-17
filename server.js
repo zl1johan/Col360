@@ -31,6 +31,7 @@ const db = loadDatabase();
 const pendingOtps = new Map();
 const pendingResetOtps = new Map();
 const pendingServerRequesters = db.pendingServerRequesters;
+const completedServerWakeRequestIds = db.completedServerWakeRequestIds;
 const queue = [];
 const sessionTasks = new Map();
 const scrypt = promisify(crypto.scrypt);
@@ -71,7 +72,7 @@ La automatización directa está limitada a estas tres consultas oficiales:
 2. ADRES (Salud / EPS) -> entidad: "ADRES - Ministerio de Salud", tramite: "Consulta de Afiliados BDUA", url_portal: "https://aplicaciones.adres.gov.co/bdua_internet/Pages/ConsultarAfiliadoWeb.aspx"
 3. Procuraduría (Antecedentes Disciplinarios) -> entidad: "Procuraduría General de la Nación", tramite: "Certificado de Antecedentes Disciplinarios", url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx"
 Menciona que la automatización está limitada a esos tres portales únicamente si la persona pide explícitamente automatizar otro portal. Una solicitud de información o guía sobre otro trámite debe recibir una respuesta útil y paso a paso sin mencionar esa limitación.
-El ciudadano ya inició sesión y su perfil está registrado localmente. Nunca pidas nombre, cédula ni correo. Para SIMIT usa la placa si aparece en la conversación; si no, usa la cédula registrada. Cuando se elija uno de los tres trámites y estén disponibles los datos requeridos, llama directamente a 'ejecutar_tramite_web' sin pedir confirmación textual repetida. La persona confirma la acción en la interfaz después de revisar la previsualización. No resuelvas CAPTCHA automáticamente; solicita que la persona lo complete.`;
+El ciudadano ya inició sesión y su perfil está registrado localmente. Nunca pidas nombre, cédula ni correo. Para SIMIT exige la placa del vehículo y nunca la sustituyas por la cédula; si no aparece una placa, pide específicamente la placa. Cuando se elija uno de los tres trámites y estén disponibles los datos requeridos, llama directamente a 'ejecutar_tramite_web' sin pedir confirmación textual repetida. La persona confirma la acción en la interfaz después de revisar la previsualización. No resuelvas CAPTCHA automáticamente; solicita que la persona lo complete.`;
 
 const tool = {
   type: "function",
@@ -111,10 +112,12 @@ let confirmationInProgress = false;
 let activeSessionId = null;
 const app = express();
 const corsOptions = {
-  origin: [
-    "https://col360.site",
-    "https://www.col360.site",
-  ],
+  origin(origin, callback) {
+    const allowedOrigins = ["https://col360.site", "https://www.col360.site"];
+    const isLocalBrowser = origin === "null"
+      || /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin || "");
+    callback(null, !origin || isLocalBrowser || allowedOrigins.includes(origin));
+  },
   allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning", "x-session-id"],
   methods: ["GET", "POST", "OPTIONS"],
 };
@@ -130,70 +133,78 @@ const healthHandler = (req, res) => {
 };
 app.get("/", healthHandler);
 app.get("/health", healthHandler);
-app.post("/api/server-request", async (req, res) => {
+async function requestServerWake(req, res) {
   const body = req.body || {};
   const nombre = typeof body.nombre === "string" ? body.nombre.trim().slice(0, 160) : "";
   const correo = typeof body.correo === "string" ? body.correo.trim().toLowerCase().slice(0, 254) : "";
+  const requestId = typeof body.requestId === "string" ? body.requestId.trim().slice(0, 128) : "";
   if (!nombre || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
     return res.status(400).json({ ok: false, error: "Ingresa un nombre y un correo válido." });
   }
-  pendingServerRequesters.push({ nombre, correo, fecha: new Date().toISOString() });
+  if (requestId && completedServerWakeRequestIds.includes(requestId)) return res.json({ ok: true });
+  const existing = pendingServerRequesters.find((requester) =>
+    String(requester.correo || "").toLowerCase() === correo);
+  if (existing) {
+    existing.requestIds = Array.isArray(existing.requestIds) ? existing.requestIds : [];
+    if (requestId && !existing.requestIds.includes(requestId)) existing.requestIds.push(requestId);
+  } else {
+    pendingServerRequesters.push({
+      nombre,
+      correo,
+      fecha: new Date().toISOString(),
+      requestIds: requestId ? [requestId] : [],
+    });
+  }
   try {
     saveDatabase();
   } catch (error) {
-    pendingServerRequesters.pop();
+    if (!existing) pendingServerRequesters.pop();
     console.error("No se pudo guardar la solicitud de encendido:", error.message);
     return res.status(500).json({ ok: false, error: "No se pudo guardar la solicitud." });
   }
-  try {
-    const notification = await fetch("https://ntfy.sh/col360-johan-2026", {
+  fetch("https://ntfy.sh/col360-johan-2026", {
       method: "POST",
       headers: { "Content-Type": "text/plain; charset=utf-8", Title: "Solicitud de encendido Col360" },
       body: "Hay una nueva solicitud de encendido de Server Col360.",
       signal: AbortSignal.timeout(5000),
-    });
-    if (!notification.ok) console.warn("ntfy respondió con estado", notification.status);
-  } catch (error) {
-    console.warn("No se pudo enviar el aviso genérico de encendido a ntfy:", error.message);
-  }
+    })
+    .then((notification) => {
+      if (!notification.ok) console.warn("ntfy respondió con estado", notification.status);
+    })
+    .catch((error) => console.warn("No se pudo enviar el aviso genérico de encendido a ntfy:", error.message));
+  notifyPendingServerRequesters().catch((error) => {
+    console.error("No se pudo procesar la solicitud de aviso de encendido:", error.message);
+  });
   return res.json({ ok: true });
-});
-app.post("/api/notify-server-ready", async (req, res) => {
-  const body = req.body || {};
-  const nombre = typeof body.nombre === "string" ? body.nombre.trim().slice(0, 160) : "";
-  const correo = typeof body.correo === "string" ? body.correo.trim().toLowerCase().slice(0, 254) : "";
-  if (!nombre || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
-    return res.status(400).json({ ok: false, error: "Ingresa un nombre y un correo válido." });
-  }
-  try {
-    await sendCol360Email({
-      to: correo,
-      subject: "El Server de Col360 ya está encendido",
-      title: "El Server ya está encendido",
-      message: `Hola ${nombre}, el servidor de Col360 ya está disponible. Puedes iniciar sesión en https://col360.site.`,
-    });
-    return res.json({ ok: true });
-  } catch (error) {
-    console.error(`No se pudo enviar el aviso de encendido a ${correo}:`, error.message);
-    return res.status(502).json({ ok: false, error: "No se pudo enviar el aviso por correo." });
-  }
-});
+}
+app.post("/api/request-server-wake", requestServerWake);
+app.post("/api/server-request", requestServerWake);
+app.post("/api/notify-server-ready", requestServerWake);
 
 function loadDatabase() {
   try {
     const stored = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-    if (!stored || !stored.users || typeof stored.users !== "object") return { users: {}, pendingServerRequesters: [] };
+    if (!stored || !stored.users || typeof stored.users !== "object") {
+      return { users: {}, pendingServerRequesters: [], completedServerWakeRequestIds: [] };
+    }
     stored.pendingServerRequesters = Array.isArray(stored.pendingServerRequesters)
       ? stored.pendingServerRequesters
+      : [];
+    stored.completedServerWakeRequestIds = Array.isArray(stored.completedServerWakeRequestIds)
+      ? stored.completedServerWakeRequestIds
       : [];
     return stored;
   } catch (error) {
     if (error.code !== "ENOENT") {
       console.error("No se pudo leer db.json; se iniciará una base vacía:", error.message);
     } else {
-      fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, pendingServerRequesters: [] }, null, 2), { mode: 0o600 });
+      fs.writeFileSync(DB_FILE, JSON.stringify({
+        users: {},
+        pendingServerRequesters: [],
+        completedServerWakeRequestIds: [],
+      }, null, 2), { mode: 0o600 });
     }
-    return { users: {}, pendingServerRequesters: [] };
+    return { users: {}, pendingServerRequesters: [], completedServerWakeRequestIds: [] };
   }
 }
 
@@ -276,6 +287,7 @@ async function notifyPendingServerRequesters() {
   if (pendingEmailFlush) return pendingEmailFlush;
   pendingEmailFlush = (async () => {
     const sent = new Set();
+    const completedSnapshot = completedServerWakeRequestIds.slice();
     for (const requester of pendingServerRequesters.slice()) {
       try {
         await sendCol360Email({
@@ -285,18 +297,27 @@ async function notifyPendingServerRequesters() {
           message: `Hola ${requester.nombre}, Col360 está listo. Ya puedes iniciar sesión en https://col360.site.`,
         });
         sent.add(requester);
+        for (const requestId of requester.requestIds || []) {
+          if (!completedServerWakeRequestIds.includes(requestId)) {
+            completedServerWakeRequestIds.push(requestId);
+          }
+        }
       } catch (error) {
         console.error(`No se pudo notificar el encendido a ${requester.correo}:`, error.message);
       }
     }
     if (sent.size) {
       const remaining = pendingServerRequesters.filter((requester) => !sent.has(requester));
+      if (completedServerWakeRequestIds.length > 1000) {
+        completedServerWakeRequestIds.splice(0, completedServerWakeRequestIds.length - 1000);
+      }
       pendingServerRequesters.splice(0, pendingServerRequesters.length, ...remaining);
       try {
         saveDatabase();
       } catch (error) {
         console.error("No se pudieron guardar las solicitudes de encendido pendientes:", error.message);
         pendingServerRequesters.push(...Array.from(sent));
+        completedServerWakeRequestIds.splice(0, completedServerWakeRequestIds.length, ...completedSnapshot);
       }
     }
   })().finally(() => { pendingEmailFlush = null; });
@@ -411,6 +432,50 @@ app.post("/api/login", async (req, res) => {
   const user = findUserByEmail(correo);
   if (!user || !(await verifyPassword(password, user.password))) {
     return res.status(401).json({ ok: false, error: "El correo o la contraseña no coinciden." });
+  }
+  return res.json({ ok: true, user: publicUser(user) });
+});
+
+app.post("/api/update-profile", (req, res) => {
+  const body = req.body || {};
+  const currentCedula = typeof body.currentCedula === "string"
+    ? body.currentCedula.replace(/\D/g, "").slice(0, 20)
+    : "";
+  const nombre = typeof body.nombre === "string" ? body.nombre.trim().slice(0, 160) : "";
+  const cedula = typeof body.cedula === "string" || typeof body.cedula === "number"
+    ? String(body.cedula).replace(/\D/g, "").slice(0, 20)
+    : "";
+  const correo = typeof body.correo === "string" ? body.correo.trim().toLowerCase().slice(0, 254) : "";
+  const user = db.users[currentCedula];
+  if (!user || !correo || String(user.correo || "").trim().toLowerCase() !== correo) {
+    return res.status(401).json({ ok: false, error: "No se pudo validar el perfil actual." });
+  }
+  if (!nombre || !/^\d{5,20}$/.test(cedula)) {
+    return res.status(400).json({ ok: false, error: "Ingresa un nombre y una cédula válida." });
+  }
+  if (cedula !== currentCedula && db.users[cedula]) {
+    return res.status(409).json({ ok: false, error: "Ya existe una cuenta con esa cédula." });
+  }
+
+  const previousName = user.nombre;
+  const previousCedula = user.cedula;
+  user.nombre = nombre;
+  user.cedula = cedula;
+  if (cedula !== currentCedula) {
+    delete db.users[currentCedula];
+    db.users[cedula] = user;
+  }
+  try {
+    saveDatabase();
+  } catch (error) {
+    if (cedula !== currentCedula) {
+      delete db.users[cedula];
+      db.users[currentCedula] = user;
+    }
+    user.nombre = previousName;
+    user.cedula = previousCedula;
+    console.error("No se pudo actualizar el perfil:", error.message);
+    return res.status(500).json({ ok: false, error: "No se pudieron guardar los cambios del perfil." });
   }
   return res.json({ ok: true, user: publicUser(user) });
 });
@@ -630,7 +695,7 @@ async function captureCaptcha(page, portalType) {
   if (!hasCaptchaImage && portalType === "procuraduria") {
     target = page.getByText(/(?:cu[aá]nto|resuelve|operaci[oó]n)\s*(?:es)?\s*\d+\s*[-+x×÷*]\s*\d+/i).first();
     if (!(await target.count())) {
-      target = page.locator("body").getByText(/(?:captcha|c[oó]digo de verificaci[oó]n)/i).first();
+      return (await page.screenshot({ type: "jpeg", quality: 90, fullPage: true })).toString("base64");
     }
   }
   await target.waitFor({ state: "visible", timeout: 3000 });
@@ -695,6 +760,26 @@ async function highlightSubmitButton(page, selector, portalName) {
   }
 }
 
+async function highlightProcuraduriaSubmitButton(page) {
+  const specific = 'button:has-text("Consultar"):visible, input[value*="Consultar" i]:visible';
+  if (await page.locator(specific).count() > 0) {
+    return highlightSubmitButton(page, specific, "Procuraduría");
+  }
+  return highlightSubmitButton(page, 'input[type="submit"]:visible', "Procuraduría");
+}
+
+async function reloadProcuraduriaChallenge(session) {
+  await session.page.reload({ waitUntil: "domcontentloaded", timeout: 15000 });
+  await session.page.waitForTimeout(900);
+  await selectCedulaType(session.page, "Procuraduría");
+  if (!lastPreviewData || !await fillFirstVisibleText(session.page, lastPreviewData.documento, "Procuraduría")) {
+    throw new Error("No se pudo volver a completar el documento en Procuraduría.");
+  }
+  session.submitButton = await highlightProcuraduriaSubmitButton(session.page);
+  if (!session.submitButton) throw new Error("No se encontró el botón Consultar en Procuraduría.");
+  session.step = "enter_captcha";
+}
+
 function saveConsultation(cedula, data, radicado, screenshot) {
   const user = db.users[cedula];
   if (!user) throw new Error("No se encontró el perfil para guardar la consulta.");
@@ -746,9 +831,6 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
   if (typeof message !== "string" || !message.trim()) {
     return res.status(400).json({ error: "El mensaje es obligatorio." });
   }
-  if (!process.env.GROQ_API_KEY) {
-    return res.status(503).json({ error: "Configura GROQ_API_KEY en el archivo .env del servidor." });
-  }
   const previousTask = sessionTasks.get(req.sessionId);
   if (previousTask) previousTask.cancelled = true;
   await closeActiveSession(req.sessionId);
@@ -766,6 +848,10 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
     sessionTasks.delete(req.sessionId);
     return res.status(401).json({ error: "Inicia sesión antes de usar el agente." });
   }
+  const normalizedHistory = normalizeHistory(history);
+  const plateMatch = message.match(/\b(?:[A-Z]{3}[\s-]?\d{3}|\d{3}[\s-]?[A-Z]{3}|[A-Z]{3}[\s-]?\d{2}[A-Z])\b/i);
+  const simitIntent = /(?:simit|comparendos?|multas?|infracciones?)/i.test(message)
+    || Boolean(plateMatch && normalizedHistory.some((entry) => /(?:simit|comparendos?|multas?|infracciones?)/i.test(entry.content)));
   const context = {
     profileRegistered: true,
   };
@@ -775,45 +861,70 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
       role: "system",
       content: `Contexto de sesión del usuario (puede estar incompleto): ${JSON.stringify(context)}`,
     },
-    ...normalizeHistory(history),
+    ...normalizedHistory,
     { role: "user", content: message.trim().slice(0, 12000) },
   ];
 
   try {
-    const model = await getActiveGroqModel(process.env.GROQ_API_KEY);
-    const response = await fetch(GROQ_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.2,
-        tools: [tool],
-        tool_choice: "auto",
-      }),
-      signal: AbortSignal.timeout(60000),
-    });
-    const payload = await response.json().catch(() => null);
-    if (response.status === 429) {
-      return res.status(200).json({ reply: GROQ_RATE_LIMIT_REPLY });
-    }
-    if (!response.ok) {
-      const detail = payload && payload.error && payload.error.message;
-      return res.status(500).json({ error: detail || `Groq respondió con estado ${response.status}.` });
-    }
+    let calls;
+    if (simitIntent) {
+      if (!plateMatch) {
+        return res.json({
+          type: "text",
+          reply: "Para consultar SIMIT necesito la placa del vehículo. Escríbela tal como aparece en la placa; no envíes tu cédula.",
+        });
+      }
+      const simitPortal = SUPPORTED_PORTALS.find((portal) => portal.tipo === "simit");
+      calls = [{
+        function: {
+          name: "ejecutar_tramite_web",
+          arguments: JSON.stringify({
+            entidad: simitPortal.entidad,
+            tramite: simitPortal.tramite,
+            documento: plateMatch[0],
+            url_portal: simitPortal.url_portal,
+          }),
+        },
+      }];
+    } else {
+      if (!process.env.GROQ_API_KEY) {
+        return res.status(503).json({ error: "Configura GROQ_API_KEY en el archivo .env del servidor." });
+      }
+      const model = await getActiveGroqModel(process.env.GROQ_API_KEY);
+      const response = await fetch(GROQ_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.2,
+          tools: [tool],
+          tool_choice: "auto",
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+      const payload = await response.json().catch(() => null);
+      if (response.status === 429) {
+        return res.status(200).json({ reply: GROQ_RATE_LIMIT_REPLY });
+      }
+      if (!response.ok) {
+        const detail = payload && payload.error && payload.error.message;
+        return res.status(500).json({ error: detail || `Groq respondió con estado ${response.status}.` });
+      }
 
-    const choice = payload && payload.choices && payload.choices[0];
-    const assistantMessage = choice && choice.message;
-    const calls = assistantMessage && assistantMessage.tool_calls;
-    if (!Array.isArray(calls) || calls.length === 0) {
-      const reply = assistantMessage && typeof assistantMessage.content === "string"
-        ? assistantMessage.content.trim()
-        : "";
-      if (!reply) return res.status(500).json({ error: "Groq no devolvió texto ni una acción válida." });
-      return res.json({ type: "text", reply });
+      const choice = payload && payload.choices && payload.choices[0];
+      const assistantMessage = choice && choice.message;
+      calls = assistantMessage && assistantMessage.tool_calls;
+      if (!Array.isArray(calls) || calls.length === 0) {
+        const reply = assistantMessage && typeof assistantMessage.content === "string"
+          ? assistantMessage.content.trim()
+          : "";
+        if (!reply) return res.status(500).json({ error: "Groq no devolvió texto ni una acción válida." });
+        return res.json({ type: "text", reply });
+      }
     }
 
     if (calls.length !== 1 || calls[0].function.name !== "ejecutar_tramite_web") {
@@ -821,7 +932,7 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
     }
     const parsed = parseToolArguments(calls[0].function.arguments);
     const requestedPortal = SUPPORTED_PORTALS.find((portal) => portal.tramite === parsed.args.tramite);
-    if (parsed.missing.includes("documento") && requestedPortal) {
+    if (parsed.missing.includes("documento") && requestedPortal && requestedPortal.tipo !== "simit") {
       parsed.args.documento = profile.cedula;
       parsed.missing.splice(parsed.missing.indexOf("documento"), 1);
     }
@@ -837,11 +948,15 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
       return res.json({ type: "text", reply: SUPPORTED_SERVICES_REPLY });
     }
     if (requestTask.cancelled) return res.status(409).json({ error: "La solicitud se canceló al salir de la cola." });
-    const conversationText = [message, ...normalizeHistory(history).map((entry) => entry.content)].join("\n");
-    const plateMatch = conversationText.match(/\b(?:[A-Z]{3}\s?\d{3}|\d{3}\s?[A-Z]{3})\b/i);
     const documentValue = selectedPortal.tipo === "simit"
-      ? (plateMatch ? plateMatch[0].replace(/\s/g, "").toUpperCase() : profile.cedula)
+      ? (plateMatch ? plateMatch[0] : "")
       : profile.cedula;
+    if (selectedPortal.tipo === "simit" && !documentValue) {
+      return res.json({
+        type: "text",
+        reply: "Para consultar SIMIT necesito la placa del vehículo. Escríbela tal como aparece en la placa; no envíes tu cédula.",
+      });
+    }
     const args = {
       entidad: selectedPortal.entidad,
       tramite: selectedPortal.tramite,
@@ -906,15 +1021,18 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
         }
         await page.waitForTimeout(400);
         try {
-          const field = page.locator(
-            'input[placeholder*="identificación" i]:visible, input[placeholder*="placa" i]:visible, input[type="text"]:visible'
-          ).first();
+          let field = page.locator('input[placeholder*="placa" i]:visible').first();
+          if (await field.count() === 0) {
+            field = page.locator('input[placeholder*="identificación" i]:visible').first();
+          }
+          if (await field.count() === 0) field = page.locator("input[type='text']:visible").first();
           await field.click({ timeout: 1500 });
           await field.fill(String(args.documento), { timeout: 1500 });
           documentFilled = true;
         } catch (error) {
           console.warn("No se pudo completar el documento o placa en SIMIT:", error.message);
         }
+        if (!documentFilled) throw new Error("No se pudo completar en SIMIT la placa indicada por el usuario.");
         submitButton = await highlightSubmitButton(
           page,
           'button[type="submit"], button:has(svg), button.btn-primary',
@@ -939,11 +1057,7 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
       } else if (selectedPortal.tipo === "procuraduria") {
         await selectCedulaType(page, "Procuraduría");
         documentFilled = await fillFirstVisibleText(page, args.documento, "Procuraduría");
-        submitButton = await highlightSubmitButton(
-          page,
-          'input[type="submit"], button:has-text("Consultar")',
-          "Procuraduría"
-        );
+        submitButton = await highlightProcuraduriaSubmitButton(page);
       }
 
       if (requestTask.cancelled || queuePosition(req.sessionId) !== 1) {
@@ -970,9 +1084,7 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
         step: needsCaptcha ? "enter_captcha" : "confirm_simit",
         reply: selectedPortal.tipo === "simit"
           ? "He preparado tu consulta en SIMIT - Federación Colombiana de Municipios."
-          : selectedPortal.tipo === "adres"
-            ? "Escribe el código de la imagen para continuar."
-            : "Resuelve el código o pregunta de la imagen para continuar.",
+          : "",
         screenshot,
         datos: args,
       });
@@ -1010,13 +1122,13 @@ app.post("/api/captcha", requireAgentToken, requireQueueFirst, async (req, res) 
     if (session.portalType === "adres") await fillAdresCaptcha(session.page, captchaText);
     else await fillProcuraduriaCaptcha(session.page, captchaText);
 
-    session.submitButton = await highlightSubmitButton(
-      session.page,
-      session.portalType === "adres"
-        ? "#btnConsultar, input[type='submit'], input[value*='Consultar' i]"
-        : 'input[type="submit"], button:has-text("Consultar")',
-      session.portalType === "adres" ? "ADRES" : "Procuraduría"
-    );
+    session.submitButton = session.portalType === "adres"
+      ? await highlightSubmitButton(
+        session.page,
+        "#btnConsultar, input[type='submit'], input[value*='Consultar' i]",
+        "ADRES"
+      )
+      : await highlightProcuraduriaSubmitButton(session.page);
     if (!session.submitButton) {
       return res.status(409).json({ error: `No se encontró el botón Consultar en ${session.portalType}.` });
     }
@@ -1029,6 +1141,7 @@ app.post("/api/captcha", requireAgentToken, requireQueueFirst, async (req, res) 
       reply: "",
       screenshot,
       datos: lastPreviewData,
+      codigoIngresado: captchaText,
     });
   } catch (error) {
     console.error(`Error al ingresar el código CAPTCHA de ${session.portalType}:`, error);
@@ -1043,15 +1156,16 @@ app.post("/api/captcha/reset", requireAgentToken, requireQueueFirst, async (req,
     return res.status(409).json({ error: "No hay un código para restablecer." });
   }
   try {
-    if (activeSession.portalType === "adres") await fillAdresCaptcha(activeSession.page, "");
-    else await fillProcuraduriaCaptcha(activeSession.page, "");
-    activeSession.step = "enter_captcha";
+    if (activeSession.portalType === "adres") {
+      await fillAdresCaptcha(activeSession.page, "");
+      activeSession.step = "enter_captcha";
+    } else {
+      await reloadProcuraduriaChallenge(activeSession);
+    }
     return res.json({
       type: "preview",
       step: "enter_captcha",
-      reply: activeSession.portalType === "adres"
-        ? "Escribe el código de la imagen para continuar."
-        : "Resuelve el código o pregunta de la imagen para continuar.",
+      reply: "",
       screenshot: await captureCaptcha(activeSession.page, activeSession.portalType),
       datos: lastPreviewData,
     });
@@ -1074,9 +1188,11 @@ app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) 
     const isCaptchaPortal = session.isCaptchaPortal;
     const selector = session.portalType === "adres"
       ? '#btnConsultar:visible, input[type="submit"]:visible, input[value*="Consultar" i]:visible'
-      : 'input[type="submit"]:visible, button:has-text("Consultar"):visible';
+      : 'button:has-text("Consultar"):visible, input[value*="Consultar" i]:visible';
     const consultaButton = session.page.locator(selector).first();
-    const submitButton = await consultaButton.count() > 0 ? consultaButton : session.submitButton;
+    const submitButton = await consultaButton.count() > 0
+      ? consultaButton
+      : session.submitButton;
     if (!submitButton) throw new Error(`No se encontró el botón Consultar en ${session.portalType}.`);
     const popupPromise = isCaptchaPortal
       ? session.page.waitForEvent("popup", { timeout: 5500 }).catch(() => null)
@@ -1096,7 +1212,16 @@ app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) 
     const popupPage = await popupPromise;
     const finalPage = popupPage || session.page;
     if (popupPage) await popupPage.waitForLoadState("domcontentloaded").catch(() => {});
-    await finalPage.waitForTimeout(1800);
+    let citizenSectionLoaded = false;
+    if (session.portalType === "procuraduria") {
+      citizenSectionLoaded = await finalPage.getByText(/Datos del ciudadano/i).first()
+        .waitFor({ state: "visible", timeout: 7000 })
+        .then(() => true)
+        .catch(() => false);
+      if (citizenSectionLoaded) await finalPage.mouse.wheel(0, 380);
+    } else {
+      await finalPage.waitForTimeout(1800);
+    }
     const validationText = await finalPage.locator(
       '[role="alert"], .validation-summary-errors, .field-validation-error, .text-danger, .error, .mensaje-error'
     ).allInnerTexts().then((items) => items.join(" "));
@@ -1104,20 +1229,30 @@ app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) 
       ? '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible'
       : 'input[id*="captcha" i]:visible, input[name*="captcha" i]:visible, input[id*="respuesta" i]:visible';
     const stillWaitingForCaptcha = !popupPage && await session.page.locator(captchaField).count() > 0;
-    if (/incorrect|inv[aá]lid|no coincide|error/i.test(validationText) || stillWaitingForCaptcha) {
-      if (session.portalType === "adres") await fillAdresCaptcha(session.page, "");
-      else await fillProcuraduriaCaptcha(session.page, "");
-      session.step = "enter_captcha";
+    const challengeStillVisible = session.portalType === "procuraduria"
+      && !citizenSectionLoaded
+      && await session.page.getByText(/(?:cu[aá]nto|resuelve|operaci[oó]n)\s*(?:es)?\s*\d+\s*[-+x×÷*]\s*\d+/i).count() > 0;
+    const validationFailed = /incorrect|inv[aá]lid|no coincide|error/i.test(validationText);
+    if (!citizenSectionLoaded && (validationFailed || stillWaitingForCaptcha || challengeStillVisible)) {
+      if (session.portalType === "adres") {
+        await fillAdresCaptcha(session.page, "");
+        session.step = "enter_captcha";
+      } else {
+        await reloadProcuraduriaChallenge(session);
+      }
       return res.json({
         ok: false,
         type: "preview",
         step: "enter_captcha",
         reply: session.portalType === "adres"
-          ? "El código no coincidió. Escribe el nuevo código de la imagen."
-          : "La respuesta no coincidió. Resuelve la nueva pregunta para continuar.",
+          ? "El código no coincidió."
+          : "La respuesta no coincidió.",
         screenshot: await captureCaptcha(session.page, session.portalType),
         datos: consultationData,
       });
+    }
+    if (session.portalType === "procuraduria" && !citizenSectionLoaded) {
+      throw new Error("El portal no mostró la sección Datos del ciudadano después de consultar.");
     }
     const screenshot = (await finalPage.screenshot({
       type: "jpeg",
