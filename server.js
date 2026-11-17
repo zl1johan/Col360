@@ -158,6 +158,26 @@ app.post("/api/server-request", async (req, res) => {
   }
   return res.json({ ok: true });
 });
+app.post("/api/notify-server-ready", async (req, res) => {
+  const body = req.body || {};
+  const nombre = typeof body.nombre === "string" ? body.nombre.trim().slice(0, 160) : "";
+  const correo = typeof body.correo === "string" ? body.correo.trim().toLowerCase().slice(0, 254) : "";
+  if (!nombre || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return res.status(400).json({ ok: false, error: "Ingresa un nombre y un correo válido." });
+  }
+  try {
+    await sendCol360Email({
+      to: correo,
+      subject: "El Server de Col360 ya está encendido",
+      title: "El Server ya está encendido",
+      message: `Hola ${nombre}, el servidor de Col360 ya está disponible. Puedes iniciar sesión en https://col360.site.`,
+    });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error(`No se pudo enviar el aviso de encendido a ${correo}:`, error.message);
+    return res.status(502).json({ ok: false, error: "No se pudo enviar el aviso por correo." });
+  }
+});
 
 function loadDatabase() {
   try {
