@@ -8,6 +8,7 @@
       content="Col360 reúne en un solo portal el acceso a servicios públicos y trámites del Estado colombiano."
     />
     <meta name="theme-color" content="#102f67" />
+    <link rel="icon" type="image/png" href="star.png" />
     <title>Col360 | Servicios públicos en un solo lugar</title>
     <style>
       :root {
@@ -570,9 +571,94 @@
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
       }
+      #col360-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at 50% 50%, #ffffff 0%, #eef2f6 100%);
+        overflow: hidden;
+        cursor: pointer;
+        transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), filter 0.65s ease;
+      }
+      .splash-aura {
+        position: absolute;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        background: conic-gradient(from 0deg, rgba(250, 204, 21, 0.45), rgba(0, 82, 204, 0.45), rgba(239, 68, 68, 0.42), rgba(250, 204, 21, 0.45));
+        filter: blur(70px);
+        opacity: 0;
+        animation: auraPulse 2.2s ease-out forwards, auraSpin 6s linear infinite;
+      }
+      .splash-ring {
+        position: absolute;
+        width: 140px;
+        height: 140px;
+        border-radius: 50%;
+        border: 2.5px solid rgba(0, 82, 204, 0.28);
+        box-shadow: 0 0 30px rgba(250, 204, 21, 0.25);
+        opacity: 0;
+        transform: scale(0.2);
+        animation: ringExpand 0.95s cubic-bezier(0.16, 1, 0.3, 1) 0.18s forwards;
+      }
+      .splash-brand {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .splash-star {
+        width: clamp(56px, 9.5vw, 82px);
+        height: auto;
+        display: block;
+        flex-shrink: 0;
+        opacity: 0;
+        transform: scale(0) rotate(-240deg);
+        animation: starEntrance 0.78s cubic-bezier(0.34, 1.56, 0.64, 1) 0.08s forwards, starSparkle 0.55s cubic-bezier(0.22, 1, 0.36, 1) 1.45s forwards;
+      }
+      .splash-name-wrap {
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
+        margin-left: 0;
+        clip-path: inset(0 100% 0 0);
+        animation: nameReveal 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.72s forwards;
+      }
+      .splash-name {
+        height: clamp(38px, 6.5vw, 56px);
+        width: auto;
+        display: block;
+      }
+      #col360-splash.is-leaving {
+        opacity: 0;
+        transform: scale(1.09);
+        filter: blur(14px);
+        pointer-events: none;
+      }
+      @keyframes auraPulse { 0% { opacity: 0; transform: scale(0.5); } 45% { opacity: 0.75; transform: scale(1.05); } 100% { opacity: 0.45; transform: scale(1); } }
+      @keyframes auraSpin { to { transform: rotate(360deg); } }
+      @keyframes ringExpand { 0% { opacity: 0.85; transform: scale(0.25); } 100% { opacity: 0; transform: scale(2.8); } }
+      @keyframes starEntrance { 0% { opacity: 0; transform: scale(0) rotate(-240deg); } 70% { opacity: 1; transform: scale(1.08) rotate(12deg); } 100% { opacity: 1; transform: scale(1) rotate(0deg); } }
+      @keyframes nameReveal { 0% { max-width: 0; margin-left: 0; opacity: 0; clip-path: inset(0 100% 0 0); } 100% { max-width: 340px; margin-left: 14px; opacity: 1; clip-path: inset(0 0% 0 0); } }
+      @keyframes starSparkle { 0% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 0 rgba(0, 82, 204, 0)); } 50% { transform: scale(1.12) rotate(90deg); filter: drop-shadow(0 0 18px rgba(0, 82, 204, 0.35)); } 100% { transform: scale(1) rotate(90deg); filter: drop-shadow(0 0 4px rgba(0, 82, 204, 0.12)); } }
     </style>
   </head>
   <body>
+    <div id="col360-splash" role="button" tabindex="0" aria-label="Saltar animación de bienvenida">
+      <div class="splash-aura"></div>
+      <div class="splash-ring"></div>
+      <div class="splash-brand">
+        <img src="star.png" onerror="this.onerror=null;this.src='Star.png';" alt="" class="splash-star" />
+        <div class="splash-name-wrap">
+          <img src="name.png" onerror="this.onerror=null;this.src='Name.png';" alt="Col360" class="splash-name" />
+        </div>
+      </div>
+    </div>
     <a class="skip-link" href="#main">Saltar al contenido</a>
     <header class="topbar">
       <a class="brand" href="#inicio" id="brandHome" aria-label="Col360, inicio">
@@ -2362,6 +2448,23 @@
           body: "{}",
           keepalive: true,
         }).catch((error) => console.warn("No se pudo abandonar la fila al recargar:", error.message));
+      });
+    </script>
+    <script>
+      const splash = document.getElementById("col360-splash");
+      const finishSplash = () => {
+        if (splash.classList.contains("is-leaving")) return;
+        clearTimeout(splashTimer);
+        splash.classList.add("is-leaving");
+        setTimeout(() => splash.remove(), 700);
+      };
+      const splashTimer = setTimeout(finishSplash, 2050);
+      splash.addEventListener("click", finishSplash);
+      splash.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          finishSplash();
+        }
       });
     </script>
   </body>
