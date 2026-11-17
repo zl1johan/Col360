@@ -1083,6 +1083,7 @@
       let queuePollTimer = 0;
       let serverToggleTimer = 0;
       let serverCheckSequence = 0;
+      let consecutiveHealthFailures = 0;
       let serverHealthCheckTimer = 0;
       let pendingActivationFlush = false;
       let pendingServerReadyFlush = false;
@@ -1677,15 +1678,14 @@
           serverUrl = DEFAULT_SERVER_URL;
           serverToken = DEFAULT_SERVER_TOKEN;
         }
-        checkServerStatus();
-        scheduleServerStatusCheck();
+        checkServerStatus().finally(scheduleServerStatusCheck);
       }
 
       function scheduleServerStatusCheck() {
         window.clearTimeout(serverHealthCheckTimer);
         const interval = localStorage.getItem(PENDING_SERVER_ALERT_STORAGE) ? 3000 : 4000;
-        serverHealthCheckTimer = window.setTimeout(() => {
-          checkServerStatus();
+        serverHealthCheckTimer = window.setTimeout(async () => {
+          await checkServerStatus();
           scheduleServerStatusCheck();
         }, interval);
       }
@@ -1888,11 +1888,12 @@
       async function checkServerStatus() {
         const sequence = ++serverCheckSequence;
         if (!serverUrl) {
+          consecutiveHealthFailures = 0;
           if (sequence === serverCheckSequence) updateServerStatus(false);
           return false;
         }
         const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 3000);
+        const timeout = window.setTimeout(() => controller.abort(), 8000);
         try {
           const response = await fetch(`${serverUrl}/health`, {
             method: "GET",
@@ -1906,10 +1907,19 @@
           const payload = await response.json();
           const isOnline = response.status === 200 && payload.status === "online" && payload.agent === "Col360";
           if (sequence !== serverCheckSequence) return serverOnline;
-          updateServerStatus(isOnline);
-          return isOnline;
+          if (isOnline) {
+            consecutiveHealthFailures = 0;
+            updateServerStatus(true);
+            return true;
+          }
+          consecutiveHealthFailures += 1;
+          if (consecutiveHealthFailures >= 3) updateServerStatus(false);
+          return serverOnline;
         } catch {
-          if (sequence === serverCheckSequence) updateServerStatus(false);
+          if (sequence === serverCheckSequence) {
+            consecutiveHealthFailures += 1;
+            if (consecutiveHealthFailures >= 3) updateServerStatus(false);
+          }
           return serverOnline;
         } finally {
           window.clearTimeout(timeout);
@@ -2397,9 +2407,16 @@
         } catch (error) {
           console.error("No se pudo confirmar el formulario web.", error);
           const reply = `No se pudo confirmar: ${error.message}. Por seguridad, verifica el portal antes de volver a intentarlo.`;
-          status.textContent = reply;
+          status.textContent = "No se pudo completar la consulta. Verifica el portal antes de volver a intentarlo.";
           state.chatHistory.push({ role: "assistant", content: reply });
-          finishWebPreview();
+          appendMessage(reply, "agent", true);
+          state.pendingWebSubmission = null;
+          state.awaitingApproval = false;
+          state.consultationActive = false;
+          state.quickOptionsVisible = true;
+          waitingForCaptcha = false;
+          setAgentBusy(false);
+          $("#agentInput").focus();
         }
       }
 

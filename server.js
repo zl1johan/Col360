@@ -1,5 +1,8 @@
 "use strict";
 
+process.on("uncaughtException", (err) => console.error("Uncaught:", err));
+process.on("unhandledRejection", (err) => console.error("Unhandled:", err));
+
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -1199,25 +1202,41 @@ app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) 
   confirmationInProgress = true;
   const session = activeSession;
   const consultationData = lastPreviewData;
+  const getOpenPage = (page, fallback) => {
+    if (page && !page.isClosed()) return page;
+    if (fallback && !fallback.isClosed()) return fallback;
+    throw new Error("El portal cerró la ventana de resultados.");
+  };
+  const closeBrowser = async (message) => {
+    try {
+      if (session.browser) await session.browser.close();
+    } catch (closeError) {
+      console.error(message, closeError);
+    }
+  };
   try {
     const isCaptchaPortal = session.isCaptchaPortal;
+    let page = getOpenPage(session.page);
     const selector = session.portalType === "adres"
       ? '#btnConsultar:visible, input[type="submit"]:visible, input[value*="Consultar" i]:visible'
       : 'button:has-text("Consultar"):visible, input[value*="Consultar" i]:visible';
-    const consultaButton = session.page.locator(selector).first();
+    const consultaButton = page.locator(selector).first();
     const submitButton = await consultaButton.count() > 0
       ? consultaButton
       : session.submitButton;
     if (!submitButton) throw new Error(`No se encontró el botón Consultar en ${session.portalType}.`);
     const popupPromise = isCaptchaPortal
-      ? session.page.waitForEvent("popup", { timeout: 5500 }).catch(() => null)
+      ? page.waitForEvent("popup", { timeout: 5500 }).catch(() => null)
       : Promise.resolve(null);
+    page = getOpenPage(page);
     await submitButton.click({ timeout: 2500 });
     if (session.portalType === "simit") {
-      await session.page.waitForTimeout(3500);
-      const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 75 })).toString("base64");
+      page = getOpenPage(page);
+      await page.waitForTimeout(3500);
+      page = getOpenPage(page);
+      const screenshot = (await page.screenshot({ type: "jpeg", quality: 75 })).toString("base64");
       saveConsultation(session.profileCedula, consultationData, "", screenshot);
-      await session.browser.close();
+      await closeBrowser("No se pudo cerrar Chromium tras la consulta:");
       activeSession = null;
       activeSessionId = null;
       lastPreviewData = null;
@@ -1225,32 +1244,44 @@ app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) 
     }
 
     const popupPage = await popupPromise;
-    const finalPage = popupPage || session.page;
-    if (popupPage) await popupPage.waitForLoadState("domcontentloaded").catch(() => {});
+    let finalPage = getOpenPage(popupPage, page);
+    if (popupPage && !popupPage.isClosed()) {
+      await popupPage.waitForLoadState("domcontentloaded").catch(() => {});
+    }
+    finalPage = getOpenPage(finalPage, page);
     let citizenSectionLoaded = false;
     if (session.portalType === "procuraduria") {
+      finalPage = getOpenPage(finalPage, page);
       citizenSectionLoaded = await finalPage.getByText(/Datos del ciudadano/i).first()
         .waitFor({ state: "visible", timeout: 7000 })
         .then(() => true)
         .catch(() => false);
-      if (citizenSectionLoaded) await finalPage.mouse.wheel(0, 380);
+      if (citizenSectionLoaded) {
+        finalPage = getOpenPage(finalPage, page);
+        await finalPage.mouse.wheel(0, 380);
+      }
     } else {
+      finalPage = getOpenPage(finalPage, page);
       await finalPage.waitForTimeout(1800);
     }
+    finalPage = getOpenPage(finalPage, page);
     const validationText = await finalPage.locator(
       '[role="alert"], .validation-summary-errors, .field-validation-error, .text-danger, .error, .mensaje-error'
     ).allInnerTexts().then((items) => items.join(" "));
     const captchaField = session.portalType === "adres"
       ? '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible'
       : 'input[id*="captcha" i]:visible, input[name*="captcha" i]:visible, input[id*="respuesta" i]:visible';
-    const stillWaitingForCaptcha = !popupPage && await session.page.locator(captchaField).count() > 0;
+    page = getOpenPage(session.page);
+    const stillWaitingForCaptcha = !popupPage && await page.locator(captchaField).count() > 0;
     const challengeStillVisible = session.portalType === "procuraduria"
       && !citizenSectionLoaded
-      && await session.page.getByText(/(?:cu[aá]nto|resuelve|operaci[oó]n)\s*(?:es)?\s*\d+\s*[-+x×÷*]\s*\d+/i).count() > 0;
+      && await getOpenPage(finalPage, page)
+        .getByText(/(?:cu[aá]nto|resuelve|operaci[oó]n)\s*(?:es)?\s*\d+\s*[-+x×÷*]\s*\d+/i).count() > 0;
     const validationFailed = /incorrect|inv[aá]lid|no coincide|error/i.test(validationText);
     if (!citizenSectionLoaded && (validationFailed || stillWaitingForCaptcha || challengeStillVisible)) {
       if (session.portalType === "adres") {
-        await fillAdresCaptcha(session.page, "");
+        page = getOpenPage(session.page);
+        await fillAdresCaptcha(page, "");
         session.step = "enter_captcha";
       } else {
         await reloadProcuraduriaChallenge(session);
@@ -1263,37 +1294,40 @@ app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) 
           ? "El código no coincidió."
           : "La respuesta no coincidió.",
         transientReply: true,
-        screenshot: await captureCaptcha(session.page, session.portalType),
+        screenshot: await captureCaptcha(getOpenPage(session.page), session.portalType),
         datos: consultationData,
       });
     }
     if (session.portalType === "procuraduria" && !citizenSectionLoaded) {
       throw new Error("El portal no mostró la sección Datos del ciudadano después de consultar.");
     }
+    finalPage = getOpenPage(finalPage, page);
     const screenshot = (await finalPage.screenshot({
       type: "jpeg",
       quality: 90,
       fullPage: true,
     })).toString("base64");
     saveConsultation(session.profileCedula, consultationData, "", screenshot);
-    await session.browser.close();
+    await closeBrowser("No se pudo cerrar Chromium tras la consulta:");
     activeSession = null;
     activeSessionId = null;
     lastPreviewData = null;
     return res.json({ ok: true, step: "done", screenshot });
   } catch (error) {
-    if (session.isCaptchaPortal && !session.page.isClosed()) {
+    if (session.isCaptchaPortal && session.page && !session.page.isClosed()) {
       activeSession = session;
     } else {
-      await session.browser.close().catch((closeError) => {
-        console.error("No se pudo cerrar Chromium tras fallar la confirmación:", closeError);
-      });
+      await closeBrowser("No se pudo cerrar Chromium tras fallar la confirmación:");
       activeSession = null;
       activeSessionId = null;
       lastPreviewData = null;
     }
     console.error("Error en /api/confirm:", error);
-    return res.status(500).json({ error: error.message || "No fue posible confirmar el formulario." });
+    const message = error && error.message || "No fue posible confirmar el formulario.";
+    if (session.portalType === "adres") {
+      return res.status(200).json({ ok: false, error: message });
+    }
+    return res.status(500).json({ error: message });
   } finally {
     confirmationInProgress = false;
   }
