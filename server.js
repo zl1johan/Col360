@@ -7,6 +7,7 @@ const express = require("express");
 const cors = require("cors");
 const nodemailer = require("nodemailer");
 const { chromium } = require("playwright");
+const { promisify } = require("node:util");
 
 const ENV_FILE = path.join(__dirname, ".env");
 if (fs.existsSync(ENV_FILE)) {
@@ -25,10 +26,14 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_RATE_LIMIT_REPLY = "Dame 5 segundos que estoy procesando varias consultas seguidas y vuelve a escribirme.";
 const DB_FILE = path.join(__dirname, "db.json");
 const OTP_LIFETIME_MS = 10 * 60 * 1000;
+const PASSWORD_MIN_LENGTH = 8;
 const db = loadDatabase();
 const pendingOtps = new Map();
+const pendingResetOtps = new Map();
+const pendingServerRequesters = db.pendingServerRequesters;
 const queue = [];
 const sessionTasks = new Map();
+const scrypt = promisify(crypto.scrypt);
 const mailTransport = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp-relay.brevo.com",
   port: Number(process.env.SMTP_PORT) || 587,
@@ -58,13 +63,15 @@ const SUPPORTED_PORTALS = [
   },
 ];
 const REQUIRED_FIELDS = ["entidad", "tramite", "documento", "url_portal"];
-const SUPPORTED_SERVICES_REPLY = "Solo puedo ayudarte con Consulta SIMIT, Afiliación ADRES y Antecedentes disciplinarios de Procuraduría.";
+const SUPPORTED_SERVICES_REPLY = "Puedo darte orientación general paso a paso sobre trámites y servicios públicos en Colombia. La automatización de portales está disponible para SIMIT, ADRES y antecedentes disciplinarios de Procuraduría.";
 
-const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Atiendes EXCLUSIVAMENTE estas tres consultas oficiales reales, sin inventar URLs ni mezclar entidades o trámites:
+const SYSTEM_PROMPT = `Eres el Agente Oficial de Col360 en Colombia. Puedes responder preguntas generales y explicar paso a paso cómo realizar trámites, solicitar citas o acceder a servicios públicos en Colombia, indicando la entidad oficial correspondiente. No inventes requisitos ni URLs; aclara cuándo un requisito debe verificarse con la entidad.
+La automatización directa está limitada a estas tres consultas oficiales:
 1. SIMIT (Multas / Comparendos) -> entidad: "SIMIT - Federación Colombiana de Municipios", tramite: "Estado de Cuenta Comparendos", url_portal: "https://www.fcm.org.co/simit/#/home-public"
 2. ADRES (Salud / EPS) -> entidad: "ADRES - Ministerio de Salud", tramite: "Consulta de Afiliados BDUA", url_portal: "https://aplicaciones.adres.gov.co/bdua_internet/Pages/ConsultarAfiliadoWeb.aspx"
 3. Procuraduría (Antecedentes Disciplinarios) -> entidad: "Procuraduría General de la Nación", tramite: "Certificado de Antecedentes Disciplinarios", url_portal: "https://apps.procuraduria.gov.co/webcert/inicio.aspx"
-El ciudadano ya inició sesión y su perfil está registrado localmente. Nunca pidas nombre, cédula ni correo. Si pide algo fuera de estos tres trámites, responde enumerando las opciones y NO llames a la herramienta. Para SIMIT usa la placa si aparece en la conversación; no pidas datos personales ya registrados. Llama a 'ejecutar_tramite_web' únicamente con la entidad, trámite y URL exactos. No resuelvas CAPTCHA automáticamente; deja la verificación para la persona usuaria y solo envía después de su confirmación explícita.`;
+Menciona que la automatización está limitada a esos tres portales únicamente si la persona pide explícitamente automatizar otro portal. Una solicitud de información o guía sobre otro trámite debe recibir una respuesta útil y paso a paso sin mencionar esa limitación.
+El ciudadano ya inició sesión y su perfil está registrado localmente. Nunca pidas nombre, cédula ni correo. Para SIMIT usa la placa si aparece en la conversación; si no, usa la cédula registrada. Cuando se elija uno de los tres trámites y estén disponibles los datos requeridos, llama directamente a 'ejecutar_tramite_web' sin pedir confirmación textual repetida. La persona confirma la acción en la interfaz después de revisar la previsualización. No resuelvas CAPTCHA automáticamente; solicita que la persona lo complete.`;
 
 const tool = {
   type: "function",
@@ -115,21 +122,58 @@ app.use(cors(corsOptions));
 // Express 5 rejects "*" as a route pattern; this regex matches every OPTIONS path.
 app.options(/.*/, cors(corsOptions));
 app.use(express.json({ limit: "256kb" }));
-const healthHandler = (req, res) => res.json({ status: "online", agent: "Col360" });
+const healthHandler = (req, res) => {
+  notifyPendingServerRequesters().catch((error) => {
+    console.error("No se pudieron procesar las solicitudes de encendido pendientes:", error.message);
+  });
+  return res.json({ status: "online", agent: "Col360" });
+};
 app.get("/", healthHandler);
 app.get("/health", healthHandler);
+app.post("/api/server-request", async (req, res) => {
+  const body = req.body || {};
+  const nombre = typeof body.nombre === "string" ? body.nombre.trim().slice(0, 160) : "";
+  const correo = typeof body.correo === "string" ? body.correo.trim().toLowerCase().slice(0, 254) : "";
+  if (!nombre || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return res.status(400).json({ ok: false, error: "Ingresa un nombre y un correo válido." });
+  }
+  pendingServerRequesters.push({ nombre, correo, fecha: new Date().toISOString() });
+  try {
+    saveDatabase();
+  } catch (error) {
+    pendingServerRequesters.pop();
+    console.error("No se pudo guardar la solicitud de encendido:", error.message);
+    return res.status(500).json({ ok: false, error: "No se pudo guardar la solicitud." });
+  }
+  try {
+    const notification = await fetch("https://ntfy.sh/col360-johan-2026", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain; charset=utf-8", Title: "Solicitud de encendido Col360" },
+      body: "Hay una nueva solicitud de encendido de Server Col360.",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!notification.ok) console.warn("ntfy respondió con estado", notification.status);
+  } catch (error) {
+    console.warn("No se pudo enviar el aviso genérico de encendido a ntfy:", error.message);
+  }
+  return res.json({ ok: true });
+});
 
 function loadDatabase() {
   try {
     const stored = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-    return stored && stored.users && typeof stored.users === "object" ? stored : { users: {} };
+    if (!stored || !stored.users || typeof stored.users !== "object") return { users: {}, pendingServerRequesters: [] };
+    stored.pendingServerRequesters = Array.isArray(stored.pendingServerRequesters)
+      ? stored.pendingServerRequesters
+      : [];
+    return stored;
   } catch (error) {
     if (error.code !== "ENOENT") {
       console.error("No se pudo leer db.json; se iniciará una base vacía:", error.message);
     } else {
-      fs.writeFileSync(DB_FILE, JSON.stringify({ users: {} }, null, 2), { mode: 0o600 });
+      fs.writeFileSync(DB_FILE, JSON.stringify({ users: {}, pendingServerRequesters: [] }, null, 2), { mode: 0o600 });
     }
-    return { users: {} };
+    return { users: {}, pendingServerRequesters: [] };
   }
 }
 
@@ -146,10 +190,97 @@ function normalizeProfile(body) {
     ? String(profile.cedula).replace(/\D/g, "").slice(0, 20)
     : "";
   const correo = typeof profile.correo === "string" ? profile.correo.trim().slice(0, 254).toLowerCase() : "";
+  const ciudad = typeof profile.ciudad === "string" ? profile.ciudad.trim().slice(0, 120) : "";
   if (!nombre || !/^\d{5,20}$/.test(cedula) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
     return null;
   }
-  return { nombre, cedula, correo };
+  return { nombre, cedula, correo, ciudad };
+}
+
+function findUserByEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  return Object.values(db.users).find((user) =>
+    user && String(user.correo || "").trim().toLowerCase() === normalized) || null;
+}
+
+function publicUser(user) {
+  const { password, ...profile } = user;
+  return profile;
+}
+
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derived = await scrypt(password, salt, 64);
+  return `scrypt$${salt}$${derived.toString("hex")}`;
+}
+
+async function verifyPassword(password, encoded) {
+  const [algorithm, salt, expectedHex] = String(encoded || "").split("$");
+  if (algorithm !== "scrypt" || !salt || !/^[a-f0-9]{128}$/i.test(expectedHex || "")) return false;
+  const expected = Buffer.from(expectedHex, "hex");
+  const actual = await scrypt(password, salt, expected.length);
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+function emailTemplate(title, message, highlighted) {
+  const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[char]);
+  const emphasis = highlighted
+    ? `<p style="margin:22px 0;padding:16px;border-radius:12px;background:#edf4ff;color:#1649a5;text-align:center;font-size:30px;font-weight:700;letter-spacing:7px">${escape(highlighted)}</p>`
+    : "";
+  const safeMessage = escape(message);
+  return {
+    text: `${title}\n\n${message}${highlighted ? `\n\n${highlighted}` : ""}\n\nCol360 te conecta con información y servicios públicos. Ingresa de forma segura en https://col360.site y nunca compartas tus códigos.`,
+    html: `<!doctype html><html lang="es"><body style="margin:0;padding:24px;background:#f4f7fb;font-family:Inter,Segoe UI,Arial,sans-serif;color:#17243b"><main style="max-width:520px;margin:0 auto;padding:24px;border:1px solid #e1e7f0;border-radius:18px;background:#fff"><header style="display:flex;align-items:center;gap:10px;margin-bottom:24px"><img src="https://col360.site/star.png" alt="Col360" width="36" height="36" style="display:block"><strong style="color:#102f67;font-size:20px">Col360</strong></header><h1 style="margin:0 0 12px;color:#102f67;font-size:22px">${escape(title)}</h1><p style="margin:0;color:#46546b;line-height:1.6">${safeMessage}</p>${emphasis}<footer style="margin-top:24px;padding-top:16px;border-top:1px solid #e1e7f0;color:#64728a;font-size:12px;line-height:1.6">Col360 te conecta con información y servicios públicos. Ingresa de forma segura en <a href="https://col360.site" style="color:#1649a5">col360.site</a> y nunca compartas tus códigos.</footer></main></body></html>`,
+  };
+}
+
+async function sendCol360Email({ to, subject, title, message, code }) {
+  const info = await mailTransport.sendMail({
+    from: `"Col360" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+    to,
+    subject,
+    ...emailTemplate(title, message, code),
+  });
+  if (Array.isArray(info.accepted)
+    && !info.accepted.some((address) => String(address).toLowerCase() === to.toLowerCase())) {
+    throw new Error(info.response || "El servidor SMTP rechazó el correo.");
+  }
+  return info;
+}
+
+let pendingEmailFlush = null;
+async function notifyPendingServerRequesters() {
+  if (!pendingServerRequesters.length) return;
+  if (pendingEmailFlush) return pendingEmailFlush;
+  pendingEmailFlush = (async () => {
+    const sent = new Set();
+    for (const requester of pendingServerRequesters.slice()) {
+      try {
+        await sendCol360Email({
+          to: requester.correo,
+          subject: "El Server de Col360 ya está encendido",
+          title: "El Server ya está encendido",
+          message: `Hola ${requester.nombre}, Col360 está listo. Ya puedes iniciar sesión en https://col360.site.`,
+        });
+        sent.add(requester);
+      } catch (error) {
+        console.error(`No se pudo notificar el encendido a ${requester.correo}:`, error.message);
+      }
+    }
+    if (sent.size) {
+      const remaining = pendingServerRequesters.filter((requester) => !sent.has(requester));
+      pendingServerRequesters.splice(0, pendingServerRequesters.length, ...remaining);
+      try {
+        saveDatabase();
+      } catch (error) {
+        console.error("No se pudieron guardar las solicitudes de encendido pendientes:", error.message);
+        pendingServerRequesters.push(...Array.from(sent));
+      }
+    }
+  })().finally(() => { pendingEmailFlush = null; });
+  return pendingEmailFlush;
 }
 
 function getSessionId(req) {
@@ -181,6 +312,7 @@ function requireQueueFirst(req, res, next) {
       ok: false,
       inQueue: true,
       position,
+      total: queue.length,
       reply: "Estás en espera en la fila. Podrás hablar con el agente en cuanto seas el puesto #1.",
     });
   }
@@ -191,6 +323,10 @@ function requireQueueFirst(req, res, next) {
 app.post("/api/request-otp", async (req, res) => {
   const profile = normalizeProfile(req.body);
   if (!profile) return res.status(400).json({ ok: false, message: "Completa nombre, cédula y un correo válido." });
+  if (!profile.ciudad) return res.status(400).json({ ok: false, message: "Selecciona una ciudad." });
+  if (db.users[profile.cedula] || findUserByEmail(profile.correo)) {
+    return res.status(409).json({ ok: false, message: "Ya existe una cuenta con esa cédula o correo. Inicia sesión o recupera tu contraseña." });
+  }
   const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
   pendingOtps.set(profile.cedula, {
     code,
@@ -198,12 +334,12 @@ app.post("/api/request-otp", async (req, res) => {
     profile,
   });
   try {
-    const info = await mailTransport.sendMail({
-      from: `"Col360" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+    const info = await sendCol360Email({
       to: profile.correo,
       subject: "Tu código de acceso Col360",
-      text: `Tu código de acceso Col360 es ${code}. Vence en 10 minutos.`,
-      html: `<!doctype html><html lang="es"><body style="margin:0;padding:24px;background:#f4f7fb;font-family:Arial,sans-serif;color:#17243b"><main style="max-width:520px;margin:0 auto;padding:28px;border:1px solid #e1e7f0;border-radius:16px;background:#fff"><h1 style="margin:0 0 12px;color:#102f67;font-size:24px">Tu código de acceso Col360</h1><p style="margin:0 0 18px">Ingresa este código para iniciar sesión. Vence en 10 minutos.</p><p style="margin:0;padding:16px;border-radius:12px;background:#edf4ff;color:#1649a5;text-align:center;font-size:36px;font-weight:700;letter-spacing:8px">${code}</p></main></body></html>`,
+      title: "Tu código de verificación",
+      message: "Ingresa este código para completar tu registro. Vence en 10 minutos.",
+      code,
     });
     const accepted = Array.isArray(info.accepted)
       && info.accepted.some((address) => String(address).toLowerCase() === profile.correo);
@@ -211,50 +347,113 @@ app.post("/api/request-otp", async (req, res) => {
     console.log("Respuesta SMTP Brevo:", info.messageId, info.accepted);
   } catch (error) {
     pendingOtps.delete(profile.cedula);
-    console.error("Error real Brevo:", error);
-    return res.status(500).json({ ok: false, message: `No se pudo enviar el correo: ${error.message}` });
-  }
-  try {
-    const notification = await fetch("https://ntfy.sh/col360-johan-2026", {
-      method: "POST",
-      headers: { "Content-Type": "text/plain; charset=utf-8", Title: "Solicitud de acceso Col360" },
-      body: "Se envió un código de acceso de Col360 por correo.",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!notification.ok) console.warn("ntfy respondió con estado", notification.status);
-  } catch (error) {
-    console.warn("No se pudo enviar el aviso genérico de OTP:", error.message);
+    console.error("No se pudo enviar el código de registro:", error.message);
+    return res.status(500).json({ ok: false, message: "No se pudo enviar el código por correo." });
   }
   return res.json({ ok: true, message: "Código enviado. Revisa tu bandeja principal o spam." });
 });
 
-app.post("/api/verify-otp", (req, res) => {
+app.post("/api/register", async (req, res) => {
   const profile = normalizeProfile(req.body);
   const code = req.body && String(req.body.code || "").trim();
+  const password = req.body && typeof req.body.password === "string" ? req.body.password : "";
+  if (!profile || !profile.ciudad) return res.status(400).json({ ok: false, error: "Completa los datos de registro y selecciona una ciudad." });
+  if (password.length < PASSWORD_MIN_LENGTH || password.length > 200) {
+    return res.status(400).json({ ok: false, error: `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres.` });
+  }
+  if (db.users[profile.cedula] || findUserByEmail(profile.correo)) {
+    return res.status(409).json({ ok: false, error: "Ya existe una cuenta con esa cédula o correo." });
+  }
   const pending = profile && pendingOtps.get(profile.cedula);
   if (!pending || pending.expiresAt < Date.now() || pending.code !== code
-    || pending.profile.correo !== profile.correo) {
+    || pending.profile.correo !== profile.correo || pending.profile.nombre !== profile.nombre
+    || pending.profile.ciudad !== profile.ciudad) {
     return res.status(400).json({ ok: false, error: "El código es inválido o venció. Solicita uno nuevo." });
   }
-  const previous = db.users[profile.cedula];
-  const user = {
-    ...profile,
-    history: Array.isArray(previous && previous.history) ? previous.history : [],
-  };
+  const user = { ...profile, password: await hashPassword(password), history: [] };
   db.users[profile.cedula] = user;
   pendingOtps.delete(profile.cedula);
   try {
     saveDatabase();
   } catch (error) {
+    delete db.users[profile.cedula];
     console.error("No se pudo guardar el perfil:", error.message);
     return res.status(500).json({ ok: false, error: "No se pudo guardar el perfil del usuario." });
   }
-  return res.json({ ok: true, user });
+  return res.json({ ok: true, user: publicUser(user) });
+});
+
+app.post("/api/login", async (req, res) => {
+  const correo = typeof (req.body && req.body.correo) === "string"
+    ? req.body.correo.trim().toLowerCase()
+    : "";
+  const password = typeof (req.body && req.body.password) === "string" ? req.body.password : "";
+  const user = findUserByEmail(correo);
+  if (!user || !(await verifyPassword(password, user.password))) {
+    return res.status(401).json({ ok: false, error: "El correo o la contraseña no coinciden." });
+  }
+  return res.json({ ok: true, user: publicUser(user) });
+});
+
+app.post("/api/forgot-password", async (req, res) => {
+  const correo = typeof (req.body && req.body.correo) === "string"
+    ? req.body.correo.trim().toLowerCase()
+    : "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    return res.status(400).json({ ok: false, error: "Ingresa un correo válido." });
+  }
+  const user = findUserByEmail(correo);
+  if (user) {
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+    pendingResetOtps.set(correo, { code, expiresAt: Date.now() + OTP_LIFETIME_MS });
+    try {
+      await sendCol360Email({
+        to: correo,
+        subject: "Recuperación de contraseña Col360",
+        title: "Recupera tu contraseña",
+        message: "Ingresa este código para crear una nueva contraseña. Vence en 10 minutos.",
+        code,
+      });
+    } catch (error) {
+      pendingResetOtps.delete(correo);
+      console.error("No se pudo enviar el código de recuperación:", error.message);
+      return res.status(500).json({ ok: false, error: "No se pudo enviar el correo de recuperación." });
+    }
+  }
+  return res.json({ ok: true, message: "Si el correo está registrado, recibirás un código de recuperación." });
+});
+
+app.post("/api/reset-password", async (req, res) => {
+  const correo = typeof (req.body && req.body.correo) === "string"
+    ? req.body.correo.trim().toLowerCase()
+    : "";
+  const code = String((req.body && req.body.code) || "").trim();
+  const newPassword = req.body && typeof req.body.newPassword === "string" ? req.body.newPassword : "";
+  const user = findUserByEmail(correo);
+  const pending = pendingResetOtps.get(correo);
+  if (!user || !pending || pending.expiresAt < Date.now() || pending.code !== code) {
+    return res.status(400).json({ ok: false, error: "El código es inválido o venció. Solicita uno nuevo." });
+  }
+  if (newPassword.length < PASSWORD_MIN_LENGTH || newPassword.length > 200) {
+    return res.status(400).json({ ok: false, error: `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres.` });
+  }
+  const previousPassword = user.password;
+  user.password = await hashPassword(newPassword);
+  try {
+    saveDatabase();
+  } catch (error) {
+    user.password = previousPassword;
+    console.error("No se pudo guardar la nueva contraseña:", error.message);
+    return res.status(500).json({ ok: false, error: "No se pudo actualizar la contraseña." });
+  }
+  pendingResetOtps.delete(correo);
+  return res.json({ ok: true });
 });
 
 app.get("/api/user/:cedula", requireAgentToken, (req, res) => {
   const cedula = String(req.params.cedula || "").replace(/\D/g, "").slice(0, 20);
-  return res.json({ ok: true, user: db.users[cedula] || null });
+  const user = db.users[cedula];
+  return res.json({ ok: true, user: user ? publicUser(user) : null });
 });
 
 app.post("/api/queue/join", (req, res) => {
@@ -339,7 +538,7 @@ function parseToolArguments(raw) {
 function validatePortalUrl(value) {
   const portal = SUPPORTED_PORTALS.find((candidate) => candidate.url_portal === value);
   if (!portal) {
-    throw new Error("El portal no coincide exactamente con una de las cuatro URLs oficiales permitidas.");
+    throw new Error("El portal no coincide exactamente con una de las URLs oficiales permitidas.");
   }
   return portal.url_portal;
 }
@@ -380,8 +579,63 @@ async function fillAdresCaptcha(page, code) {
       lastError = error;
     }
   }
-
   throw lastError || new Error("No se encontró el campo CAPTCHA de ADRES.");
+}
+
+async function fillProcuraduriaCaptcha(page, answer) {
+  const selectors = [
+    'input[id*="captcha" i]:visible',
+    'input[name*="captcha" i]:visible',
+    'input[id*="respuesta" i]:visible',
+    'input[name*="respuesta" i]:visible',
+    'input[placeholder*="respuesta" i]:visible',
+  ];
+  for (const selector of selectors) {
+    const field = page.locator(selector).first();
+    if (await field.count()) {
+      await field.fill(String(answer).trim(), { timeout: 1500 });
+      return;
+    }
+  }
+  const textField = page.locator('input[type="text"]:visible').last();
+  await textField.fill(String(answer).trim(), { timeout: 1500 });
+}
+
+async function captureCaptcha(page, portalType) {
+  const image = page.locator(
+    'img[id*="captcha" i], img[id*="capcha" i], img[src*="captcha" i], img[src*="capcha" i], img[alt*="captcha" i], img[alt*="capcha" i]'
+  ).first();
+  const hasCaptchaImage = await image.count() > 0;
+  let target = image;
+  if (!hasCaptchaImage && portalType === "procuraduria") {
+    target = page.getByText(/(?:cu[aá]nto|resuelve|operaci[oó]n)\s*(?:es)?\s*\d+\s*[-+x×÷*]\s*\d+/i).first();
+    if (!(await target.count())) {
+      target = page.locator("body").getByText(/(?:captcha|c[oó]digo de verificaci[oó]n)/i).first();
+    }
+  }
+  await target.waitFor({ state: "visible", timeout: 3000 });
+  await target.scrollIntoViewIfNeeded();
+  let cropTarget = target;
+  if (portalType === "procuraduria" && !hasCaptchaImage) {
+    const parent = target.locator("xpath=..");
+    if (await parent.count()) cropTarget = parent;
+  }
+  const box = await cropTarget.boundingBox();
+  if (!box || box.width < 1 || box.height < 1) {
+    throw new Error(`No se pudo localizar el CAPTCHA de ${portalType}.`);
+  }
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("No se pudo determinar el tamaño de la ventana del portal.");
+  const x = Math.max(0, box.x);
+  const y = Math.max(0, box.y);
+  const width = Math.min(box.width, viewport.width - x);
+  const height = Math.min(box.height, viewport.height - y);
+  if (width < 1 || height < 1) throw new Error("El CAPTCHA está fuera del área visible del portal.");
+  return (await page.screenshot({
+    type: "jpeg",
+    quality: 92,
+    clip: { x, y, width, height },
+  })).toString("base64");
 }
 
 async function selectCedulaType(page, portalName) {
@@ -421,22 +675,6 @@ async function highlightSubmitButton(page, selector, portalName) {
   }
 }
 
-async function captureAdresCaptcha(page) {
-  const candidates = page.locator(
-    'img[id*="captcha" i], img[id*="capcha" i], img[src*="captcha" i], img[src*="capcha" i], img[alt*="captcha" i], img[alt*="capcha" i]'
-  );
-  const image = candidates.first();
-  await image.waitFor({ state: "visible", timeout: 3000 });
-  await image.scrollIntoViewIfNeeded();
-  const box = await image.boundingBox();
-  if (!box || box.width < 1 || box.height < 1) throw new Error("No se pudo localizar la imagen CAPTCHA de ADRES.");
-  return (await page.screenshot({
-    type: "jpeg",
-    quality: 90,
-    clip: { x: box.x, y: box.y, width: box.width, height: box.height },
-  })).toString("base64");
-}
-
 function saveConsultation(cedula, data, radicado, screenshot) {
   const user = db.users[cedula];
   if (!user) throw new Error("No se encontró el perfil para guardar la consulta.");
@@ -444,7 +682,7 @@ function saveConsultation(cedula, data, radicado, screenshot) {
   user.history.push({
     fecha: new Date().toISOString(),
     portal: data.entidad,
-    radicado,
+    radicado: radicado || "",
     screenshot,
   });
   saveDatabase();
@@ -581,13 +819,20 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
     if (requestTask.cancelled) return res.status(409).json({ error: "La solicitud se canceló al salir de la cola." });
     const conversationText = [message, ...normalizeHistory(history).map((entry) => entry.content)].join("\n");
     const plateMatch = conversationText.match(/\b(?:[A-Z]{3}\s?\d{3}|\d{3}\s?[A-Z]{3})\b/i);
+    const documentValue = selectedPortal.tipo === "simit"
+      ? (plateMatch ? plateMatch[0].replace(/\s/g, "").toUpperCase() : profile.cedula)
+      : profile.cedula;
     const args = {
       entidad: selectedPortal.entidad,
       tramite: selectedPortal.tramite,
-      documento: selectedPortal.tipo === "simit"
-        ? (plateMatch ? plateMatch[0].replace(/\s/g, "").toUpperCase() : profile.cedula)
-        : profile.cedula,
+      documento: documentValue,
       url_portal: validatePortalUrl(selectedPortal.url_portal),
+      portal_corto: selectedPortal.tipo === "simit"
+        ? "fcm.org.co/simit"
+        : selectedPortal.tipo === "adres"
+          ? "aplicaciones.adres.gov.co/bdua_internet"
+          : "apps.procuraduria.gov.co/webcert",
+      valor: documentValue,
     };
     const browser = await chromium.launch({ headless: false, slowMo: 200 });
     try {
@@ -685,28 +930,29 @@ app.post("/api/chat", requireAgentToken, requireQueueFirst, async (req, res) => 
         await browser.close();
         return res.status(409).json({ error: "La solicitud se canceló al salir de la cola." });
       }
-      const isAdres = args.url_portal.includes("adres.gov.co");
-      const screenshot = isAdres
-        ? await captureAdresCaptcha(page)
+      const needsCaptcha = selectedPortal.tipo === "adres" || selectedPortal.tipo === "procuraduria";
+      const screenshot = needsCaptcha
+        ? await captureCaptcha(page, selectedPortal.tipo)
         : (await page.screenshot({ type: "jpeg", quality: 65 })).toString("base64");
       activeSession = {
         browser,
         page,
         submitButton,
-        isAdres,
-        step: isAdres ? "enter_captcha" : "confirm_submit",
+        portalType: selectedPortal.tipo,
+        isCaptchaPortal: needsCaptcha,
+        step: needsCaptcha ? "enter_captcha" : "confirm_submit",
         profileCedula: profile.cedula,
       };
       activeSessionId = req.sessionId;
       lastPreviewData = args;
       return res.json({
         type: "preview",
-        ...(isAdres ? { step: "enter_captcha" } : {}),
-        reply: isAdres
-          ? "Escribe el código de la imagen para continuar."
-          : documentFilled
-            ? `He preparado tu consulta en ${args.entidad}. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`
-            : `Abrí el portal oficial de ${args.entidad}, pero no pude completar la casilla de documento. Verifica los datos en pantalla y completa manualmente cualquier CAPTCHA antes de pulsar Aceptar y enviar.`,
+        step: needsCaptcha ? "enter_captcha" : "confirm_simit",
+        reply: selectedPortal.tipo === "simit"
+          ? "He preparado tu consulta en SIMIT - Federación Colombiana de Municipios."
+          : selectedPortal.tipo === "adres"
+            ? "Escribe el código de la imagen para continuar."
+            : "Resuelve el código o pregunta de la imagen para continuar.",
         screenshot,
         datos: args,
       });
@@ -735,21 +981,24 @@ app.post("/api/captcha", requireAgentToken, requireQueueFirst, async (req, res) 
   }
   const captchaText = captcha === undefined || captcha === null ? "" : String(captcha).trim();
   if (!captchaText) return res.status(400).json({ error: "Escribe el código de la imagen." });
-  if (!activeSession || activeSessionId !== req.sessionId || !activeSession.isAdres || activeSession.step !== "enter_captcha") {
-    return res.status(409).json({ error: "No hay una consulta ADRES esperando un código CAPTCHA." });
+  if (!activeSession || activeSessionId !== req.sessionId || !activeSession.isCaptchaPortal || activeSession.step !== "enter_captcha") {
+    return res.status(409).json({ error: "No hay una consulta esperando un código CAPTCHA." });
   }
 
   const session = activeSession;
   try {
-    await fillAdresCaptcha(session.page, captchaText);
+    if (session.portalType === "adres") await fillAdresCaptcha(session.page, captchaText);
+    else await fillProcuraduriaCaptcha(session.page, captchaText);
 
     session.submitButton = await highlightSubmitButton(
       session.page,
-      "#btnConsultar, input[type='submit'], input[value*='Consultar' i]",
-      "ADRES"
+      session.portalType === "adres"
+        ? "#btnConsultar, input[type='submit'], input[value*='Consultar' i]"
+        : 'input[type="submit"], button:has-text("Consultar")',
+      session.portalType === "adres" ? "ADRES" : "Procuraduría"
     );
     if (!session.submitButton) {
-      return res.status(409).json({ error: "No se encontró el botón Consultar en ADRES." });
+      return res.status(409).json({ error: `No se encontró el botón Consultar en ${session.portalType}.` });
     }
     await session.page.waitForTimeout(400);
     const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 75 })).toString("base64");
@@ -757,135 +1006,112 @@ app.post("/api/captcha", requireAgentToken, requireQueueFirst, async (req, res) 
     return res.json({
       type: "preview",
       step: "confirm_submit",
-      reply: "Revisa si el código quedó bien escrito. Puedes confirmar o restablecerlo.",
+      reply: "",
       screenshot,
       datos: lastPreviewData,
     });
   } catch (error) {
-    console.error("Error al ingresar el código CAPTCHA de ADRES:", error);
+    console.error(`Error al ingresar el código CAPTCHA de ${session.portalType}:`, error);
     return res.status(500).json({ error: error.message || "No fue posible ingresar el código CAPTCHA." });
   }
 });
 
 app.post("/api/captcha/reset", requireAgentToken, requireQueueFirst, async (req, res) => {
   if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
-  if (!activeSession || activeSessionId !== req.sessionId || !activeSession.isAdres
+  if (!activeSession || activeSessionId !== req.sessionId || !activeSession.isCaptchaPortal
     || activeSession.step !== "confirm_submit") {
-    return res.status(409).json({ error: "No hay un código ADRES para restablecer." });
+    return res.status(409).json({ error: "No hay un código para restablecer." });
   }
   try {
-    await fillAdresCaptcha(activeSession.page, "");
+    if (activeSession.portalType === "adres") await fillAdresCaptcha(activeSession.page, "");
+    else await fillProcuraduriaCaptcha(activeSession.page, "");
     activeSession.step = "enter_captcha";
     return res.json({
       type: "preview",
       step: "enter_captcha",
-      reply: "Escribe el código de la imagen para continuar.",
-      screenshot: await captureAdresCaptcha(activeSession.page),
+      reply: activeSession.portalType === "adres"
+        ? "Escribe el código de la imagen para continuar."
+        : "Resuelve el código o pregunta de la imagen para continuar.",
+      screenshot: await captureCaptcha(activeSession.page, activeSession.portalType),
       datos: lastPreviewData,
     });
   } catch (error) {
-    console.error("No se pudo restablecer el código CAPTCHA de ADRES:", error.message);
+    console.error(`No se pudo restablecer el código CAPTCHA de ${activeSession.portalType}:`, error.message);
     return res.status(500).json({ error: "No fue posible restablecer el código CAPTCHA." });
   }
 });
 
 app.post("/api/confirm", requireAgentToken, requireQueueFirst, async (req, res) => {
-  const captchaCode = String((req.body && (req.body.captcha || req.body.code)) || "").trim();
   if (confirmationInProgress) return res.status(409).json({ error: "La confirmación ya está en curso." });
   if (!activeSession || activeSessionId !== req.sessionId) return res.status(409).json({ error: "No hay una previsualización activa para confirmar." });
-  if (activeSession.isAdres && activeSession.step !== "confirm_submit") {
+  if (activeSession.isCaptchaPortal && activeSession.step !== "confirm_submit") {
     return res.status(409).json({ error: "Primero ingresa el código CAPTCHA desde la previsualización." });
   }
   confirmationInProgress = true;
   const session = activeSession;
   const consultationData = lastPreviewData;
   try {
-    if (session.isAdres) {
-      if (captchaCode) {
-        await fillAdresCaptcha(session.page, captchaCode);
-      }
+    const isCaptchaPortal = session.isCaptchaPortal;
+    const selector = session.portalType === "adres"
+      ? '#btnConsultar:visible, input[type="submit"]:visible, input[value*="Consultar" i]:visible'
+      : 'input[type="submit"]:visible, button:has-text("Consultar"):visible';
+    const consultaButton = session.page.locator(selector).first();
+    const submitButton = await consultaButton.count() > 0 ? consultaButton : session.submitButton;
+    if (!submitButton) throw new Error(`No se encontró el botón Consultar en ${session.portalType}.`);
+    const popupPromise = isCaptchaPortal
+      ? session.page.waitForEvent("popup", { timeout: 5500 }).catch(() => null)
+      : Promise.resolve(null);
+    await submitButton.click({ timeout: 2500 });
+    if (session.portalType === "simit") {
+      await session.page.waitForTimeout(3500);
+      const screenshot = (await session.page.screenshot({ type: "jpeg", quality: 75 })).toString("base64");
+      saveConsultation(session.profileCedula, consultationData, "", screenshot);
+      await session.browser.close();
+      activeSession = null;
+      activeSessionId = null;
+      lastPreviewData = null;
+      return res.json({ ok: true, step: "done", screenshot });
+    }
 
-      const popupPromise = session.page.waitForEvent("popup", { timeout: 5500 }).catch(() => null);
-      const consultaButton = session.page.locator(
-        '#btnConsultar:visible, input[type="submit"]:visible, input[value*="Consultar" i]:visible'
-      ).first();
-      const submitButton = await consultaButton.count() > 0 ? consultaButton : session.submitButton;
-      if (submitButton) {
-        try {
-          await submitButton.click({ timeout: 2000 });
-        } catch (error) {
-          console.warn("No se pudo pulsar Consultar en ADRES:", error.message);
-        }
-      } else {
-        console.warn("No se encontró el botón Consultar en ADRES.");
-      }
-
-      const popupPage = await popupPromise;
-      if (popupPage) {
-        await popupPage.waitForLoadState("domcontentloaded").catch(() => {});
-        await popupPage.waitForTimeout(1500);
-        const screenshot = (await popupPage.screenshot({
-          type: "jpeg",
-          quality: 90,
-          fullPage: true,
-        })).toString("base64");
-        const radicado = `COL360-${Date.now().toString().slice(-6)}`;
-        saveConsultation(session.profileCedula, consultationData, radicado, screenshot);
-        await session.browser.close();
-        activeSession = null;
-        activeSessionId = null;
-        lastPreviewData = null;
-        return res.json({ ok: true, step: "done", reply: "Consulta finalizada.", screenshot, radicado });
-      }
-
-      await fillAdresCaptcha(session.page, "");
+    const popupPage = await popupPromise;
+    const finalPage = popupPage || session.page;
+    if (popupPage) await popupPage.waitForLoadState("domcontentloaded").catch(() => {});
+    await finalPage.waitForTimeout(1800);
+    const validationText = await finalPage.locator(
+      '[role="alert"], .validation-summary-errors, .field-validation-error, .text-danger, .error, .mensaje-error'
+    ).allInnerTexts().then((items) => items.join(" "));
+    const captchaField = session.portalType === "adres"
+      ? '#Capcha_txtCapcha:visible, input[id*="Capcha" i]:visible, input[id*="Captcha" i]:visible'
+      : 'input[id*="captcha" i]:visible, input[name*="captcha" i]:visible, input[id*="respuesta" i]:visible';
+    const stillWaitingForCaptcha = !popupPage && await session.page.locator(captchaField).count() > 0;
+    if (/incorrect|inv[aá]lid|no coincide|error/i.test(validationText) || stillWaitingForCaptcha) {
+      if (session.portalType === "adres") await fillAdresCaptcha(session.page, "");
+      else await fillProcuraduriaCaptcha(session.page, "");
       session.step = "enter_captcha";
       return res.json({
         ok: false,
         type: "preview",
         step: "enter_captcha",
-        reply: "El código no coincidió. Escribe el nuevo código de la imagen.",
-        screenshot: await captureAdresCaptcha(session.page),
-        datos: lastPreviewData,
+        reply: session.portalType === "adres"
+          ? "El código no coincidió. Escribe el nuevo código de la imagen."
+          : "La respuesta no coincidió. Resuelve la nueva pregunta para continuar.",
+        screenshot: await captureCaptcha(session.page, session.portalType),
+        datos: consultationData,
       });
     }
-
-    let submitError = null;
-    const submitButton = session.submitButton;
-    if (submitButton) {
-      try {
-        await submitButton.click({ timeout: 2000 });
-      } catch (error) {
-        submitError = error;
-        console.warn("No se pudo enviar la consulta desde el portal:", error.message);
-      }
-    } else {
-      submitError = new Error("No se encontró un botón de consulta resaltado.");
-    }
-    await session.page.waitForTimeout(3500);
-    const browserPages = session.page.context().pages().filter((page) => !page.isClosed());
-    const finalPage = browserPages[browserPages.length - 1] || session.page;
-    const screenshot = (await finalPage.screenshot({ type: "jpeg", quality: 70 })).toString("base64");
-    if (submitError) {
-      await session.browser.close();
-      activeSession = null;
-      activeSessionId = null;
-      lastPreviewData = null;
-      return res.json({
-        ok: false,
-        error: "No se pudo enviar la consulta. Comprueba el CAPTCHA y el estado del portal; no se generó una referencia.",
-        screenshot,
-      });
-    }
-    const radicado = `COL360-${Date.now().toString().slice(-6)}`;
-    saveConsultation(session.profileCedula, consultationData, radicado, screenshot);
+    const screenshot = (await finalPage.screenshot({
+      type: "jpeg",
+      quality: 90,
+      fullPage: true,
+    })).toString("base64");
+    saveConsultation(session.profileCedula, consultationData, "", screenshot);
     await session.browser.close();
     activeSession = null;
     activeSessionId = null;
     lastPreviewData = null;
-    return res.json({ ok: true, step: "done", screenshot, radicado });
+    return res.json({ ok: true, step: "done", screenshot });
   } catch (error) {
-    if (session.isAdres && !session.page.isClosed()) {
+    if (session.isCaptchaPortal && !session.page.isClosed()) {
       activeSession = session;
     } else {
       await session.browser.close().catch((closeError) => {
@@ -921,5 +1147,8 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   app.listen(PORT, "127.0.0.1", () => {
     console.log(`Servidor Col360 listo en http://127.0.0.1:${PORT}`);
     console.log("Las rutas requieren un Bearer válido (API_SECRET_TOKEN, COL360_AGENT_TOKEN o token demo).");
+    notifyPendingServerRequesters().catch((error) => {
+      console.error("No se pudieron procesar las solicitudes de encendido pendientes:", error.message);
+    });
   });
 }
