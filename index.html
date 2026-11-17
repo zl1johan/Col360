@@ -84,6 +84,7 @@
       .user-summary:hover, .user-summary:focus-visible { background: var(--blue-pale); outline-color: var(--blue); }
       .user-summary strong { display: block; color: var(--ink); }
       .profile-copy { display: block; }
+      #userSummary[hidden], #loginOpen[hidden] { display: none; }
       .user-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #edf4ff; color: var(--blue); font-size: 1.1rem; }
       .user-avatar svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
       .server-control { display: flex; }
@@ -217,14 +218,18 @@
       }
       .hero-card .mini-label { color: #d5e4ff; font-size: .84rem; font-weight: 700; }
       .hero-card h2 { margin: 5px 0 17px; font-size: 1.35rem; }
-      .hero-category-grid { display: grid; gap: 8px; }
-      .hero-category { min-height: 58px; display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; background: rgba(255,255,255,.12); color: #fff; font-size: .86rem; font-weight: 750; text-decoration: none; }
-      .hero-category:hover { background: rgba(255,255,255,.2); }
+      .hero-category-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
+      .hero-category-item { min-width: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.24); border-radius: 14px; background: linear-gradient(145deg, rgba(255,255,255,.2), rgba(255,255,255,.07)); box-shadow: inset 0 1px rgba(255,255,255,.16), 0 8px 20px rgba(7,23,55,.12); backdrop-filter: blur(12px); }
+      .hero-category { width: 100%; min-height: 105px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 12px; border: 0; background: transparent; color: #fff; font: inherit; text-align: left; cursor: pointer; }
+      .hero-category:hover, .hero-category[aria-expanded="true"] { background: rgba(255,255,255,.12); }
       .hero-category-icon { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: rgba(255,255,255,.16); }
       .hero-category-icon svg { width: 29px; height: 29px; }
-      .hero-category strong { flex: 1; }
-      .hero-category-plus { font-size: 1.35rem; font-weight: 500; }
-      .hero-agent-button { width: 100%; margin-top: 10px; border-color: rgba(255,255,255,.35); background: #f0bd45; color: #102f67; }
+      .hero-category strong { display: flex; align-items: center; justify-content: space-between; gap: 5px; width: 100%; font-size: .83rem; line-height: 1.3; }
+      .hero-category-plus { flex: 0 0 auto; font-size: 1.2rem; font-weight: 500; }
+      .hero-subservices { display: grid; gap: 2px; padding: 0 8px 8px; }
+      .hero-subservices[hidden] { display: none; }
+      .hero-subservices a { display: block; padding: 7px 8px; border-radius: 8px; color: #fff; font-size: .76rem; line-height: 1.3; text-decoration: none; overflow-wrap: anywhere; }
+      .hero-subservices a:hover, .hero-subservices a:focus-visible { background: rgba(255,255,255,.15); text-decoration: underline; }
       .preview-card, .service-card, .news-card, .appointment-card {
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -531,15 +536,22 @@
       @media (max-width: 768px) {
         .topbar { min-height: 62px; flex-wrap: nowrap; gap: 8px; padding: 8px 14px; }
         .brand { font-size: 1.15rem; }
-        .brand-logo img:first-child { height: 30px; }
-        .brand-logo img:last-child { height: 23px; }
+        .brand-logo { gap: 5px; }
+        .brand-logo img:first-child { height: 26px; }
+        .brand-logo img:last-child { height: 20px; }
         .top-actions { flex: 0 0 auto; margin-left: auto; gap: 8px; }
         .user-summary { width: 38px; height: 38px; justify-content: center; padding: 0; }
         .profile-copy { display: none; }
         .server-toggle { gap: 6px; padding: 6px 9px; font-size: .75rem; }
+        #loginOpen { min-height: 38px; padding: 7px 10px; font-size: .78rem; white-space: nowrap; }
         .agent-panel { right: 8px; bottom: 76px; width: calc(100vw - 16px); height: calc(100dvh - 90px); max-height: calc(100dvh - 90px); }
         .hero-inner { min-height: auto; grid-template-columns: 1fr; gap: 30px; padding: 55px 0; }
         .hero-card { max-width: 500px; }
+        .hero-category-grid { gap: 9px; }
+        .hero-category { min-height: 102px; padding: 10px; }
+        .hero-category strong { font-size: .78rem; }
+        .hero-subservices { padding: 0 5px 6px; }
+        .hero-subservices a { padding: 7px 6px; font-size: .72rem; }
         .hero-inner, .content-wrap, .dashboard-wrap { width: min(100% - 32px, 1120px); }
         .section { padding: 48px 0; }
         .section-heading { align-items: flex-start; flex-direction: column; }
@@ -563,6 +575,12 @@
         .zoom-controls { top: 10px; left: 10px; }
         .zoom-controls button { min-width: 36px; height: 36px; }
         .login-card { padding: 24px 20px; }
+      }
+      @media (max-width: 360px) {
+        .topbar { gap: 6px; padding-right: 8px; padding-left: 8px; }
+        .top-actions { gap: 6px; }
+        .server-toggle { padding-right: 7px; padding-left: 7px; }
+        #loginOpen { padding-right: 8px; padding-left: 8px; font-size: .75rem; }
       }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
@@ -667,7 +685,8 @@
           </button>
           <p id="serverMessage" aria-live="polite" hidden></p>
         </div>
-        <button class="user-summary" id="userSummary" type="button" aria-label="Iniciar sesión o abrir menú de usuario">
+        <button class="button small" id="loginOpen" type="button" hidden>Iniciar sesión</button>
+        <button class="user-summary" id="userSummary" type="button" aria-label="Abrir menú de usuario" hidden>
           <span class="user-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"></circle><path d="M5 20c.7-3.5 3.2-5.3 7-5.3s6.3 1.8 7 5.3"></path></svg></span>
           <span class="profile-copy" id="profileCopy"></span>
         </button>
@@ -690,7 +709,6 @@
               <span class="mini-label">Col360</span>
               <h2>Servicios para cada momento</h2>
               <div class="hero-category-grid" id="landingServices"></div>
-              <button type="button" class="button hero-agent-button" data-open-agent>+ Agente Col360 IA</button>
             </aside>
           </div>
         </div>
@@ -1094,6 +1112,8 @@
         const signedIn = Boolean(state.user);
         $("#view-landing").hidden = signedIn;
         $("#view-dashboard").hidden = !signedIn;
+        $("#loginOpen").hidden = signedIn;
+        $("#userSummary").hidden = !signedIn;
         $("#userSummary").setAttribute("aria-label", signedIn ? "Abrir menú de usuario" : "Iniciar sesión");
         $("#profileCopy").innerHTML = signedIn
           ? `<strong>${escapeHTML(state.user.nombre)}</strong><span>${escapeHTML(state.user.correo)}</span>`
@@ -1491,15 +1511,61 @@
 
       function renderLandingServices() {
         const previews = [
-          ["Salud y Bienestar", "salud"],
-          ["Identidad y trámites", "registraduria"],
-          ["Educación y empleo", "educacion"],
-          ["Hogar, movilidad e impuestos", "transporte"],
+          {
+            name: "Salud y Bienestar",
+            icon: "salud",
+            services: [
+              ["Consulta de Afiliación ADRES", "https://aplicaciones.adres.gov.co/bdua_internet/Pages/ConsultarAfiliadoWeb.aspx"],
+              ["Puntaje Sisbén IV", "https://www.sisben.gov.co/Paginas/consulta-tu-grupo.html"],
+              ["Puntos de Atención y Urgencias EPS", "https://www.minsalud.gov.co/"],
+              ["Carnet Digital de Vacunación", "https://mivacuna.sispro.gov.co/MiVacuna/Account/Login"],
+            ],
+          },
+          {
+            name: "Identidad y trámites",
+            icon: "registraduria",
+            services: [
+              ["Antecedentes Disciplinarios (Procuraduría)", "https://apps.procuraduria.gov.co/webcert/inicio.aspx"],
+              ["Antecedentes Judiciales (Policía Nacional)", "https://antecedentes.policia.gov.co:7005/WebJudicial/"],
+              ["Trámite Cédula Digital (Registraduría)", "https://www.registraduria.gov.co/"],
+              ["Cita de Pasaporte (Cancillería)", "https://tramitesmre.cancilleria.gov.co/tramites/enlinea/agendamiento.xhtml"],
+            ],
+          },
+          {
+            name: "Educación y empleo",
+            icon: "educacion",
+            services: [
+              ["Certificados y Cursos SENA", "https://oferta.senasofiaplus.edu.co/sofia-oferta/"],
+              ["Agencia Pública de Empleo", "https://ape.sena.edu.co/"],
+              ["Consulta Resultados ICFES", "https://www.icfes.gov.co/"],
+              ["Estado de Crédito ICETEX", "https://web.icetex.gov.co/creditos"],
+            ],
+          },
+          {
+            name: "Hogar, movilidad e impuestos",
+            icon: "transporte",
+            services: [
+              ["Comparendos y Multas SIMIT", "https://www.fcm.org.co/simit/#/home-public"],
+              ["Consulta RUT e Impuestos DIAN", "https://www.dian.gov.co/"],
+              ["Histórico Vehicular RUNT", "https://www.runt.gov.co/"],
+              ["Subsidios de Vivienda", "https://www.minvivienda.gov.co/"],
+            ],
+          },
         ];
-        $("#landingServices").innerHTML = previews.map(([name, serviceKey]) =>
-          `<a class="hero-category" href="${escapeHTML(services[serviceKey].url)}" target="_blank" rel="noopener noreferrer">
-            <span class="hero-category-icon" aria-hidden="true">${services[serviceKey].icon}</span><strong>${escapeHTML(name)}</strong><span class="hero-category-plus" aria-hidden="true">+</span>
-          </a>`
+        $("#landingServices").innerHTML = previews.map((category, index) => {
+          const panelId = `landing-subservices-${index}`;
+          return `<div class="hero-category-item">
+            <button type="button" class="hero-category" aria-expanded="false" aria-controls="${panelId}">
+              <span class="hero-category-icon" aria-hidden="true">${services[category.icon].icon}</span>
+              <strong>${escapeHTML(category.name)}<span class="hero-category-plus" aria-hidden="true">+</span></strong>
+            </button>
+            <div class="hero-subservices" id="${panelId}" hidden>
+              ${category.services.map(([name, url]) =>
+                `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(name)}</a>`
+              ).join("")}
+            </div>
+          </div>`;
+        }
         ).join("");
       }
 
@@ -2411,9 +2477,24 @@
         showView();
       }
 
+      $("#loginOpen").addEventListener("click", openLogin);
       $("#userSummary").addEventListener("click", () => {
         if (state.user) openProfileMenu();
         else openLogin();
+      });
+      $("#landingServices").addEventListener("click", (event) => {
+        const button = event.target.closest(".hero-category");
+        if (!button) return;
+        const panel = document.getElementById(button.getAttribute("aria-controls"));
+        const willOpen = button.getAttribute("aria-expanded") !== "true";
+        $$(".hero-category", $("#landingServices")).forEach((categoryButton) => {
+          categoryButton.setAttribute("aria-expanded", "false");
+          document.getElementById(categoryButton.getAttribute("aria-controls")).hidden = true;
+        });
+        if (willOpen) {
+          button.setAttribute("aria-expanded", "true");
+          panel.hidden = false;
+        }
       });
       $("#profileClose").addEventListener("click", closeProfileMenu);
       $("#profileOverlay").addEventListener("click", (event) => {
